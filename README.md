@@ -1,5 +1,7 @@
-# Vue 3 + Vite
+# 📅COOR
 
-This template should help get you started developing with Vue 3 in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Capstone Project for La Consolation College - Novaliches
 
-Learn more about IDE Support for Vue in the [Vue Docs Scaling up Guide](https://vuejs.org/guide/scaling-up/tooling.html#ide-support).
+This study focuses on creating a scheduler system to help College Departments of La Consolacion College to set schedules. It will handle class schedules, consultations, making planning easier and reducing errors.
+
+> ⚠️ **Note:** This project is for educational purposes only. Please do not reuse any code or content without permission.
