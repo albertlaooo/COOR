@@ -1,62 +1,44 @@
 <script setup>
     import { useRouter } from 'vue-router'
-    import { ref, watch, computed } from "vue"
+    import { ref, watch, computed, onMounted } from "vue"
+    import axios from "axios";
 
     const router = useRouter()
 
-    function backBtn() {
-        router.push(`/main/masterlist`)
-    }
-
-    const searchQuery = ref("")
-    const sortValue = ref("")
-
-    const items = ref([
-    { faculty_id: "0205152642", name: "Reyes, Daniel", departments: "CS, IT", availability: "M,T,W,TH,F,S" },
-    { faculty_id: "0205321658", name: "Ramirez, Sofia", departments: "CHEM, PHYS", availability: "M,W,TH,F" },
-    { faculty_id: "0205436984", name: "Morales, Taylor", departments: "MATH, BA, EDU", availability: "W,F" },
-    ])
-
-    // Final list = search + sort
-    const filteredItems = computed(() => {
-    let result = [...items.value]
-
-    // 🔎 Search across all fields
-    if (searchQuery.value) {
-        result = result.filter(item =>
-        Object.values(item).some(val =>
-            String(val).toLowerCase().includes(searchQuery.value.toLowerCase())
-        )
-        )
-    }
-
-    // ↕️ Sort options
-    if (sortValue.value === "name-asc") {
-        result.sort((a, b) => a.name.localeCompare(b.name))
-    } else if (sortValue.value === "name-desc") {
-        result.sort((a, b) => b.name.localeCompare(a.name))
-    } else if (sortValue.value === "dept-asc") {
-        result.sort((a, b) => a.departments.length - b.departments.length)
-    } else if (sortValue.value === "dept-desc") {
-        result.sort((a, b) => b.departments.length - a.departments.length)
-    } else if (sortValue.value === "avail-asc") {
-        result.sort((a, b) => a.availability.length - b.availability.length)
-    } else if (sortValue.value === "avail-desc") {
-        result.sort((a, b) => b.availability.length - a.availability.length)
-    }
-
-    return result
-    })
-
-    /////////////////////////////// Modal ////////////////////////////
+    // DATA
     const facultyId = ref()
     const firstName = ref()
     const lastName = ref()
-    const department = ref([])
-    const courses = ref([])
+    const department = ref()
+    const departments = ref([])
+    const subjects = ref()
 
     const isVisibleTeacherModal = ref(false)
 
+    // Database Departments list
+    const departmentsDB = ref([])
+
+    // Database Subjects list
+    const subjectsDB = ref([])
+
+    //////////////////////// Department Suggestor /////////////////////////
+    // Filtered list
+    const filteredDepartments = computed(() => {
+    if (!department.value) return []
+    return departmentsDB.value
+    .map(dep => dep.department_name) // extract the names
+    .filter(name =>
+      name.toLowerCase().includes(department.value.toLowerCase())
+    )
+    })
+
+    // Select department
+    function selectDepartment(dep) {
+    departments.value.push(dep)
+    department.value = ''
+    }
+
+    //////////////////////// Availability /////////////////////////
     const mondayChecked = ref(false)
     const tuesdayChecked = ref(false)
     const wednesdayChecked = ref(false)
@@ -98,6 +80,132 @@
     const defaultFrom = '07:00'
     const defaultTo = '17:00'
 
+    //////////////////////// Navigation Function /////////////////////////
+    function backBtn() {
+        router.push(`/main/masterlist`)
+    }
+
+    /////////////////////////////// Table ////////////////////////////
+    const searchQuery = ref("")
+    const sortValue = ref("")
+
+    const items = ref([])
+
+    // Final list = search + sort
+    const filteredItems = computed(() => {
+    let result = [...items.value]
+
+    // 🔎 Search across all fields
+    if (searchQuery.value) {
+        result = result.filter(item =>
+        Object.values(item).some(val =>
+            String(val).toLowerCase().includes(searchQuery.value.toLowerCase())
+        )
+        )
+    }
+
+    // ↕️ Sort options
+    if (sortValue.value === "name-asc") {
+        result.sort((a, b) => a.name.localeCompare(b.name))
+    } else if (sortValue.value === "name-desc") {
+        result.sort((a, b) => b.name.localeCompare(a.name))
+    } else if (sortValue.value === "dept-asc") {
+        result.sort((a, b) => a.departments.length - b.departments.length)
+    } else if (sortValue.value === "dept-desc") {
+        result.sort((a, b) => b.departments.length - a.departments.length)
+    } else if (sortValue.value === "avail-asc") {
+        result.sort((a, b) => a.availability.length - b.availability.length)
+    } else if (sortValue.value === "avail-desc") {
+        result.sort((a, b) => b.availability.length - a.availability.length)
+    }
+
+    return result
+    })
+
+    /////////////////////////////// Modal ////////////////////////////
+    const teacherConfirm = async () => {
+        try {
+            // Add to Teachers Table
+            const resTeacher = await axios.post("http://localhost:3000/add-teacher", {
+                faculty_id: facultyId.value,
+                first_name: firstName.value.charAt(0).toUpperCase() + firstName.value.slice(1).toLowerCase(),
+                last_name: lastName.value.charAt(0).toUpperCase() + lastName.value.slice(1).toLowerCase(),
+                availability: "jsonFile",
+            });
+
+            console.log(resTeacher.data.message);
+
+            const teacherId = resTeacher.data.teacher_id;
+            const departmentsArray = departments.value;
+
+            // Add to Teacher Departments
+            const resDept = await axios.post("http://localhost:3000/add-teacher-department", {
+                teacher_id: teacherId,
+                department_name: departmentsArray,
+            });
+
+            fetchTeachers();
+
+            console.log(resDept.data.message);
+        } catch (error) {
+            console.error("Error:", error);
+            console.log("Failed to add teacher.");
+        }
+        alert("Add teacher Successfully!");
+        isVisibleTeacherModal.value = !isVisibleTeacherModal.value;
+    };
+
+
+    /////////////////////////////// FETCH TEACHERS ////////////////////////////
+    const fetchTeachers = async () => {
+    try {
+        const res = await axios.get("http://localhost:3000/teachers")
+
+        items.value = res.data.map(teacher => ({
+            teacher_id: teacher.teacher_id,
+            faculty_id: teacher.faculty_id,
+            first_name: teacher.first_name,
+            last_name: teacher.last_name,
+            availability: teacher.availability
+        }));
+
+    } catch (err) {
+        console.error("Error fetching teachers:", err)
+    }
+    }
+
+    onMounted(fetchTeachers);
+
+    /////////////////////////////// FETCH DEPARTMENTS ////////////////////////////
+    const fetchDepartments = async () => {
+        try {
+            const res = await axios.get("http://localhost:3000/departments");
+
+            if (res.data && Array.isArray(res.data)) {
+
+            // Clear first para walang duplicate
+            departmentsDB.value.length = 0;
+
+            // Push each item
+            res.data.forEach(dep => {
+                departmentsDB.value.push({
+                department_id: dep.department_id,
+                department_name: dep.department_name,
+                department_code: dep.department_code
+                });
+            });
+            }
+
+            console.log("Departments:", departmentsDB);
+
+        } catch (err) {
+            console.error("Error fetching departments:", err);
+        }
+    }
+
+    onMounted(fetchDepartments)
+
+    /////////////////////////////// Modal ////////////////////////////
     // Helper function to watch a day
     function watchFullDay(fullDayRef, fromRef, toRef) {
     watch(fullDayRef, (newVal) => {
@@ -126,15 +234,6 @@
             
         }
     }
-
-    const teacherConfirm = () => {
-
-        // Put data to database
-
-        isVisibleTeacherModal.value = !isVisibleTeacherModal.value
-    }
-
-
 </script>
 
 <template>
@@ -207,7 +306,7 @@
                     <tbody>
                         <tr v-for="item in filteredItems" :key="item.id">
                         <td>{{ item.faculty_id }}</td>
-                        <td>{{ item.name }}</td>
+                        <td>{{ item.first_name + ', ' + item.last_name }}</td>
                         <td>{{ item.departments }}</td>
                         <td>{{ item.availability }}</td>
                         <td>
@@ -247,18 +346,38 @@
                                 <input v-model="lastName"></input>
                             </div>
 
-                             <div>
+                             <div style="position: relative; width: 100%;">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Department</p>
                                 <input v-model="department"></input>
+
+                                <!-- Dropdown suggestions -->
+                                <div v-if="filteredDepartments.length" 
+                                    style="position: absolute; display: flex; flex-direction: column; background-color: white;
+                                            width: 100%;  padding-top: 6px; padding-bottom: 6px; border-radius: 6px; border: 1px solid var(--color-border);
+                                            margin-top: 6px; box-sizing: border-box;
+                                            max-height: 200px; overflow-y: auto;"> 
+
+                                    <div v-for="(dep, index) in filteredDepartments" 
+                                        :key="index"
+                                        @click="selectDepartment(dep)"
+                                        class="dropdown-item">
+                                        {{ dep }}
+                                    </div>
+                                </div>
+                                <!-- Selected Departments -->
                                 <div style="display: flex; flex-direction: column; background-color: var(--color-main-background);
-                                            width: 100%; height: auto; min-height: 80px; border-radius: 6px; border: 1px solid var(--color-border);
-                                            margin-top: 6px; padding: 12px; box-sizing: border-box;">
+                                            width: 100%; height: 120px; overflow-y: auto; min-height: 80px; border-radius: 6px; border: 1px solid var(--color-border);
+                                            margin-top: 6px; padding-left: 16px; padding-right: 16px; padding-top: 8px; padding-bottom: 8px; box-sizing: border-box;">
+
+                                    <label v-for="dept in departments" :key="dept" style="margin-bottom: 4px;">
+                                        {{ dept }}
+                                    </label>
                                 </div>
                             </div>
 
                              <div>
-                                <p class="paragraph--black-bold" style="line-height: 1.8;">Courses</p>
-                                <input v-model="courses"></input>
+                                <p class="paragraph--black-bold" style="line-height: 1.8;">Subjects</p>
+                                <input v-model="subjects"></input>
                                 <div style="display: flex; flex-direction: column; background-color: var(--color-main-background);
                                             width: 100%; height: auto; min-height: 80px; border-radius: 6px; border: 1px solid var(--color-border);
                                             margin-top: 6px; padding: 12px; box-sizing: border-box;">
@@ -505,4 +624,19 @@
         border-radius: 6px;
         gap: 25px;
     }
+
+    .dropdown-item {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        cursor: pointer;
+        border-radius: 4px;
+        color: black;
+    }
+
+    .dropdown-item:hover {
+        background: #eee;
+    }
+
 </style>

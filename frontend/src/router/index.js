@@ -50,7 +50,7 @@ const routes = [
             path: 'departments', 
             name: 'Departments', 
             component: Departments, 
-            meta: { title: 'COOR | Departments' } 
+            meta: { title: 'COOR | Departments' }
           },
           { 
             path: 'courses', 

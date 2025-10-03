@@ -1,27 +1,84 @@
 <script setup>
-    import { ref } from "vue"
+    import { ref, onMounted, computed } from "vue"
     import { useRouter } from 'vue-router'
+    import axios from "axios";
 
     const router = useRouter()
 
-    // Images
-    import engineeringLogo from '@/assets/departments/college_of_engineering_and_technology.webp'
-    import businessLogo from '@/assets/departments/college_of_business_and_accountancy.webp'
-    import educationLogo from '@/assets/departments/college_of_education.webp'
+    // Data
+    const departments = ref([])
+    const departmentImage = ref(0);
+    const departmentName = ref('');
+    const departmentCode = ref('');
 
-    // Create an array for easier handling
-    const preloadedImages = [
-        engineeringLogo,
-        businessLogo,
-        educationLogo
-    ]
+    // Selected Department
+    const selectedDept = ref(null)
+
+    // Images
+    import img0 from '@/assets/departments/0.webp'
+    import img1 from '@/assets/departments/1.webp'
+    import img2 from '@/assets/departments/2.webp'
+    import img3 from '@/assets/departments/3.webp'
+
+    // Map integers to images
+    const images = {
+    0: img0,
+    1: img1,
+    2: img2,
+    3: img3
+    }
 
     // Preload images programmatically
-    preloadedImages.forEach(src => {
+    Object.values(images).forEach(src => {
     const img = new Image()
     img.src = src
     })
 
+    /////////////////////////////// FETCH DEPARTMENTS ////////////////////////////
+    const fetchDepartments = async () => {
+        try {
+            const res = await axios.get("http://localhost:3000/departments");
+
+            departments.value = res.data.map(dept => ({
+                id: dept.department_id,
+                imgIndex: dept.department_image,
+                img: images[dept.department_image] || images[0],
+                name: dept.department_name,
+                code: dept.department_code,
+                
+                courses: 0,
+                teachers: 0
+            }));
+        } catch (err) {
+            console.error("Error fetching departments:", err);
+        }
+    }
+
+    onMounted(fetchDepartments);
+
+    /////////////////////////////// DELETE DEPARTMENTS ////////////////////////////
+    async function deleteDepartment() {
+        if (!selectedDept.value || !selectedDept.value.id) {
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to delete?`)) return;
+        try {
+            await axios.delete(`http://localhost:3000/departments/${selectedDept.value.id}`);
+            alert("Department deleted successfully!");
+
+            // refresh the list
+            fetchDepartments();
+
+            // reset selection
+            selectedDept.value = null;
+        } catch (err) {
+            console.error("Error deleting department:", err);
+            alert("Failed to delete department.");
+        }
+    }
+
+    /////////////////////////////// NAVIGATION FUNCTION ////////////////////////////
     function backBtn() {
         router.push(`/main/masterlist`)
     }
@@ -30,49 +87,127 @@
         router.push(`/main/masterlist/${which}`)
     }
 
-    // Departments List
-    const departments = ref([
-    {
-        name: "College of Engineering and Technology",
-        code: "CET",
-        img: engineeringLogo,
-        courses: 5,
-        teachers: 4
-    },
-    {
-        name: "College of Business and Accountancy",
-        code: "CBA",
-        img: businessLogo,
-        courses: 7,
-        teachers: 6
-    },
-    {
-        name: "College of Education",
-        code: "CE",
-        img: educationLogo,
-        courses: 4,
-        teachers: 3
-    }
-    ])
-
-    // Selected Department
-    const selectedDept = ref(null)
-
     function departmentClick(dept) {
-    selectedDept.value = dept
-    console.log("Clicked department:", dept.code)
+        if (selectedDept.value && selectedDept.value.id === dept.id) {
+            selectedDept.value = null;
+        } else {
+            selectedDept.value = dept;
+        }
     }
 
-    /////////////////////////////// Add Department Modal ////////////////////////////
-    const isVisibleAddDepartment = ref(false)
+    const deleteIconColor = computed(() => {
+        return selectedDept.value ? '#A83838' : '#CCCCCC'; // #CCCCCC for gray
+    });
 
-    function departmentConfirm() {
-        toggleAddDepartment()
+    const updateIconColor = computed(() => {
+        return selectedDept.value ? 'var(--color-primary)' : '#CCCCCC'; // #CCCCCC for gray
+    });
+
+    /////////////////////////////// Department Modal ////////////////////////////
+    const departmentTitle = ref('');
+    const departmentButton = ref('');
+    const departmentHandler = ref('');
+    const isVisibleDepartmentModal = ref(false)
+
+    const departmentConfirm = async () => {
+
+        if(departmentHandler.value === 'add'){
+            try {
+                const res = await axios.post("http://localhost:3000/add-department", {
+                    department_image: departmentImage.value,
+                    department_name: departmentName.value,
+                    department_code: departmentCode.value.toUpperCase()
+                });
+                console.log(res.data.message);
+                alert("Add department Successfully!");
+            } catch (error) {
+                console.error("Error:", error);
+                alert("Failed to add department.");
+            }
+            fetchDepartments();
+            toggleDepartmentModal('cancel');
+            
+            // Reset Inputs
+            departmentImage.value = 0;
+            departmentName.value = '';
+            departmentCode.value = '';
+            }
+
+        else if(departmentHandler.value === 'update'){
+            try {
+            const res = await axios.put(`http://localhost:3000/update-department/${selectedDept.value.id}`, {
+            department_image: departmentImage.value,
+            department_name: departmentName.value,
+            department_code: departmentCode.value.toUpperCase()
+            });
+
+            console.log(res.data.message);
+            alert("Department updated successfully!");
+            
+            fetchDepartments();
+            selectedDept.value = null;
+            toggleDepartmentModal('cancel');
+
+            // Reset Inputs
+            departmentImage.value = 0;
+            departmentName.value = '';
+            departmentCode.value = '';
+            } catch (error) {
+                console.error("Error:", error);
+                alert("Failed to update department.");
+            }
+        }
     }
 
-    function toggleAddDepartment() {
-        isVisibleAddDepartment.value = !isVisibleAddDepartment.value        
+    function toggleDepartmentModal(which) {
+        if(which === 'add'){
+            departmentTitle.value = 'Department Information'
+            departmentButton.value = 'Confirm'
+            departmentHandler.value = 'add'
+            isVisibleDepartmentModal.value = !isVisibleDepartmentModal.value
+        }
+
+        else if(which === 'update'){
+            departmentTitle.value = 'Update Information'
+            departmentImage.value = selectedDept.value.imgIndex;
+            departmentName.value = selectedDept.value.name;
+            departmentCode.value = selectedDept.value.code;
+            departmentButton.value = 'Update'
+            departmentHandler.value = 'update'
+            isVisibleDepartmentModal.value = !isVisibleDepartmentModal.value
+        }
+
+        else if(which === 'cancel'){
+            setTimeout(() => {
+                departmentTitle.value = '';
+                departmentImage.value = 0;
+                departmentName.value = '';
+                departmentCode.value = '';
+                departmentButton.value = '';
+                departmentHandler.value = '';
+            }, 100);
+
+            isVisibleDepartmentModal.value = !isVisibleDepartmentModal.value
+        }
     }
+
+    /////////////////////////////// Choose Image Modal ////////////////////////////
+    const isVisibleChooseImage = ref(false)
+
+    const imageChooseCancel = async () => {
+        departmentImage.value = 0;
+        toggleChooseImage();
+    }
+
+    const imageChooseConfirm = async () => {
+        toggleChooseImage();
+    }
+
+    function toggleChooseImage() {
+        isVisibleChooseImage.value = !isVisibleChooseImage.value        
+    }
+
+    
 </script>
 
 <template>
@@ -111,37 +246,56 @@
         </div>
 
         <main>
-            <div class="grid-container">
-                <div style="display: flex; align-items: center; padding-left: 12px; padding-right: 12px;">
-                    <p class="paragraph--black-bold">Title</p>
-                    <svg @click="toggleAddDepartment" style="margin-left: auto;" width="27" height="27" viewBox="0 0 33 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <rect width="33" height="32" rx="4" fill="#0785D4"/>
-                        <path d="M17.0228 11.1006V20.7433M12.3677 15.9219H21.6779" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                </div>
+            <div class="card-container-div">
+                <div style="display: flex; flex-direction: column; gap: 6px; flex: 1;">
+                    <div style="display: flex; align-items: center; padding-left: 12px; padding-right: 12px;">
+                        <p class="paragraph--black-bold">Title</p>
 
-                <div></div>
-        
-                <div class="card-container">
-                    <div 
-                        v-for="(dept, index) in departments" 
-                        :key="index" 
-                        class="card"
-                        @click="departmentClick(dept)"
-                        >
-                        <img :src="dept.img" :alt="dept.name" />
-                        <div style="display: flex; flex-direction: column;">
-                            <div style="width: 100%; min-width: 200px;">
-                                <h3> {{ dept.name }} </h3>
+                        <div style="display: flex; flex-direction: row; gap: 10px; align-items: center; margin-left: auto; justify-content: center;">
+                            <svg @click="deleteDepartment()" width="26" height="28" viewBox="0 0 30 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M11.1427 25.6427V11.4999C11.1427 11.313 11.0827 11.1587 10.9627 11.037C10.8427 10.9153 10.6884 10.8553 10.4998 10.857H9.21411C9.02726 10.857 8.87297 10.917 8.75126 11.037C8.62954 11.157 8.56954 11.3113 8.57126 11.4999V25.6427C8.57126 25.8296 8.63126 25.9839 8.75126 26.1056C8.87126 26.2273 9.02554 26.2873 9.21411 26.2856H10.4998C10.6867 26.2856 10.841 26.2256 10.9627 26.1056C11.0844 25.9856 11.1444 25.8313 11.1427 25.6427ZM16.2855 25.6427V11.4999C16.2855 11.313 16.2255 11.1587 16.1055 11.037C15.9855 10.9153 15.8313 10.8553 15.6427 10.857H14.357C14.1701 10.857 14.0158 10.917 13.8941 11.037C13.7724 11.157 13.7124 11.3113 13.7141 11.4999V25.6427C13.7141 25.8296 13.7741 25.9839 13.8941 26.1056C14.0141 26.2273 14.1684 26.2873 14.357 26.2856H15.6427C15.8295 26.2856 15.9838 26.2256 16.1055 26.1056C16.2273 25.9856 16.2873 25.8313 16.2855 25.6427ZM21.4284 25.6427V11.4999C21.4284 11.313 21.3684 11.1587 21.2484 11.037C21.1284 10.9153 20.9741 10.8553 20.7855 10.857H19.4998C19.313 10.857 19.1587 10.917 19.037 11.037C18.9153 11.157 18.8553 11.3113 18.857 11.4999V25.6427C18.857 25.8296 18.917 25.9839 19.037 26.1056C19.157 26.2273 19.3113 26.2873 19.4998 26.2856H20.7855C20.9724 26.2856 21.1267 26.2256 21.2484 26.1056C21.3701 25.9856 21.4301 25.8313 21.4284 25.6427ZM10.4998 5.71415H19.4998L18.5355 3.36386C18.4413 3.24386 18.3273 3.17015 18.1935 3.14272H11.8241C11.6904 3.17015 11.5764 3.24386 11.4821 3.36386L10.4998 5.71415ZM29.1427 6.357V7.64272C29.1427 7.82957 29.0827 7.98386 28.9627 8.10557C28.8427 8.22729 28.6884 8.28729 28.4998 8.28558H26.5713V27.3296C26.5713 28.4404 26.2567 29.4013 25.6275 30.2121C24.9984 31.023 24.2415 31.4284 23.357 31.4284H6.64268C5.75811 31.4284 5.00125 31.0367 4.37211 30.2533C3.74297 29.4699 3.4284 28.5227 3.4284 27.4119V8.28558H1.49983C1.31297 8.28558 1.15868 8.22557 1.03697 8.10557C0.915255 7.98557 0.855255 7.83129 0.856969 7.64272V6.357C0.856969 6.17015 0.916969 6.01586 1.03697 5.89415C1.15697 5.77243 1.31126 5.71243 1.49983 5.71415H7.70725L9.11383 2.35843C9.3144 1.863 9.67611 1.44129 10.199 1.09329C10.7218 0.745289 11.2507 0.571289 11.7855 0.571289H18.2141C18.749 0.571289 19.2778 0.745289 19.8007 1.09329C20.3235 1.44129 20.6853 1.863 20.8858 2.35843L22.2924 5.71415H28.4998C28.6867 5.71415 28.841 5.77415 28.9627 5.89415C29.0844 6.01415 29.1444 6.16843 29.1427 6.357Z" :fill="deleteIconColor"/>
+                            </svg>
+
+                            <svg @click="toggleDepartmentModal('update')" class="svg-icon" style="width: 27px;height: 27px; margin-right: 1px; vertical-align: middle;fill: currentColor;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M423.381333 85.333333a42.666667 42.666667 0 0 1 4.992 85.034667L423.381333 170.666667H246.186667a75.52 75.52 0 0 0-75.221334 69.290666L170.666667 246.186667v531.712c0 39.594667 30.506667 72.106667 69.290666 75.221333L246.186667 853.333333h531.712a75.52 75.52 0 0 0 75.221333-69.290666L853.333333 777.813333v-177.237333a42.666667 42.666667 0 0 1 85.034667-4.992l0.298667 4.992v177.237333a160.853333 160.853333 0 0 1-152.533334 160.597334L777.813333 938.666667H246.144a160.853333 160.853333 0 0 1-160.597333-152.533334L85.333333 777.813333V246.144a160.853333 160.853333 0 0 1 152.533334-160.597333L246.186667 85.333333h177.237333z" :fill="updateIconColor" /><path d="M716.501333 119.168a133.162667 133.162667 0 0 1 194.133334 182.186667l-5.802667 6.144-362.666667 362.666666a42.666667 42.666667 0 0 1-24.576 12.117334L512 682.666667H384a42.666667 42.666667 0 0 1-42.368-37.674667L341.333333 640v-128a42.666667 42.666667 0 0 1 8.789334-25.941333l3.712-4.266667 362.666666-362.666667z m128 60.330667a47.872 47.872 0 0 0-63.488-3.712l-4.181333 3.712L426.666667 529.664v67.626667h67.626666l350.208-350.122667a47.872 47.872 0 0 0 3.712-63.488l-3.712-4.181333z" :fill="updateIconColor" /><path d="M652.501333 183.168a42.666667 42.666667 0 0 1 56.32-3.541333l4.010667 3.541333 128 128a42.666667 42.666667 0 0 1-56.32 63.872l-4.010667-3.541333-128-128a42.666667 42.666667 0 0 1 0-60.330667z" :fill="updateIconColor" /></svg>
+
+                            <svg @click="toggleDepartmentModal('add')" width="27" height="27" viewBox="0 0 33 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect width="33" height="32" rx="4" fill="#0785D4"/>
+                                <path d="M17.0228 11.1006V20.7433M12.3677 15.9219H21.6779" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                    </div>
+
+                    <div class="card-container">
+                        <div 
+                            v-for="(dept, index) in departments" 
+                            :key="index" 
+                            class="card"
+                            :class="{ 'active': selectedDept && selectedDept.id === dept.id }"
+                            @click="departmentClick(dept)"
+                            >
+                            <img :src="dept.img" :alt="dept.name" />
+                            <div style="display: flex; flex-direction: column;">
+                                <div>
+                                    <h3> {{ dept.name + " (" + dept.code + ")"}} </h3>
+                                </div>
+                                
+                                <p>{{ dept.courses }} Courses</p>
+                                <p>{{ dept.teachers }} Teachers</p>
                             </div>
-                            
-                            <p>{{ dept.courses }} Courses</p>
-                            <p>{{ dept.teachers }} Teachers</p>
                         </div>
                     </div>
                 </div>
 
-                <div class="card-container empty">
+                <div style="display: flex; flex-direction: column; gap: 6px; flex: 1; padding-top: 34px;">
+                    <div class="card-container"  :class="{ empty: selectedDept === null }">
+                        <div style="display: flex; flex-direction: column; height: 100%; padding: 15px; padding-left: 30px; padding-right: 30px; gap: 10px;">
+                            <h3 style="margin: 0; line-height: 1;">Add Course</h3>
+                            <input placeholder="Search here.."></input>
+                            
+                            <div style="height: 100%; width: 100%; margin-top: 4px;; border: 1px solid rgba(0, 0, 0, 0.2); box-shadow: 0 0px 4px rgba(0, 0, 0, 0.2); border-radius: 10px; ">
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
             </div>
@@ -149,28 +303,58 @@
 
         <!-- Add Department Modal -->
         <transition name="fade">
-            <div v-show="isVisibleAddDepartment" class="modal" @click.self="toggleAddDepartment">
-               <div class="modal-content-add-department">
-                    <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">Department Information</h2>
+            <div v-show="isVisibleDepartmentModal" class="modal" @click.self="toggleDepartmentModal('cancel')">
+               <div class="modal-content-department">
+                    <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">{{ departmentTitle }}</h2>
+
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; margin-top: 10px;">
+                        <img :src="images[departmentImage]" style="width: 120px; height: 120px; object-fit: contain;"/>
+                        <p @click="toggleChooseImage" style="color: var(--color-primary); font-weight: 600; cursor: pointer; user-select: none;">Edit</p>
+                    </div>
 
                     <div style="display: flex; flex-direction: column; width: 100%; gap: 14px;">
                         <!-- Department Name -->
                         <div>
                             <p class="paragraph--black-bold" style="line-height: 1.8;">Department Name</p>
-                            <input v-model="deptName"></input>
+                            <input v-model="departmentName"></input>
                         </div>
 
                         <div>
                             <p class="paragraph--black-bold" style="line-height: 1.8;">Department Code</p>
-                            <input v-model="deptCode" style="display: flex; flex-direction: column; width: 120px;"></input>
+                            <input v-model="departmentCode" style="display: flex; flex-direction: column; width: 120px;"></input>
                         </div>
                     </div>
 
                     <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
-                        <button @click="toggleAddDepartment" class="cancelBtn">Cancel</button>
-                        <button @click="departmentConfirm">Confirm</button>
+                        <button @click="toggleDepartmentModal('cancel')" class="cancelBtn">Cancel</button>
+                        <button @click="departmentConfirm()">{{ departmentButton }}</button>
                     </div>
                </div>
+            </div>
+        </transition>
+
+        <!-- Image Choose Modal -->
+        <transition name="fade">
+            <div v-show="isVisibleChooseImage" class="modal" @click.self="toggleChooseImage">
+                <div class="modal-content-image-choose">
+                <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">Choose your image</h2>
+
+                <div class="image-grid">
+                    <div
+                    v-for="(imgSrc, index) in images"
+                    :key="index"
+                    class="image-item"
+                    :class="{ 'selected': departmentImage === parseInt(index) }"
+                    @click="departmentImage = parseInt(index)"
+                    >
+                    <img :src="imgSrc" draggable="false"/>
+                    </div>
+                </div>
+                <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
+                    <button @click="imageChooseCancel" class="cancelBtn">Cancel</button>
+                    <button @click="imageChooseConfirm">Confirm</button>
+                </div>
+                </div>
             </div>
         </transition>
 
@@ -235,20 +419,21 @@
         font-weight: 600;
     }
 
-    .grid-container {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        column-gap: 15px;
-        row-gap: 8px;
+    .card-container-div {
+        display: flex;
+        flex-direction: row;
+        gap: 15px;
+        max-width: 1800px;
+        height: 32vw;
+        max-height: 650px;
     }
 
     .card-container {
         display: flex; 
         flex-direction: column; 
-        height: 27vw;
-        min-width: 400px;
-        min-height: 350px;
-        max-width: 770px;
+        height: 100%;
+        width: 100%;
+        min-width: 450px;
         background-color: white; 
         border-radius: 8px; 
         border: 1px solid rgba(0, 0, 0, 0.2); 
@@ -256,10 +441,15 @@
         user-select: none;
         padding-top: 10px;
         padding-bottom: 10px;
+        overflow-y: auto;
     }
 
     .card-container.empty {
         background-color: var(--color-lightgray);
+    }
+
+    .card-container.empty * {
+        display: none;
     }
 
     .card {
@@ -273,24 +463,20 @@
         padding-bottom: 12px;
         border-top: 1px solid transparent;
         border-bottom: 1px solid transparent;
+        transition: 0.1s;
     }
 
     .card:hover {
         background-color: #E4F5FF;
         border-top: 1px solid var(--color-primary);
         border-bottom: 1px solid var(--color-primary);
+        transition: 0.1s;
     }
 
     .card.active {
         background-color: #E4F5FF;
         border-top: 1px solid var(--color-primary);
         border-bottom: 1px solid var(--color-primary);
-    }
-
-    .card > div {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
     }
 
     .card h3 {
@@ -301,9 +487,8 @@
         font-weight: 600;
         margin-top: 0px;
         margin-bottom: 4px;
+        width: clamp(200px, 24vw, 24vw);
     }
-
-
 
     img {
         height: 100%;
@@ -311,20 +496,69 @@
         object-fit: contain;
     }
 
-    .modal-content-add-department {
+    .modal-content-department {
         display: flex;
         flex-direction: column;
         background-color: white;
         height: auto;
         align-items: center;
         width: 550px;
-        padding-top: 30px;
-        padding-bottom: 30px;
-        padding-left: 40px;
-        padding-right: 40px;
+        padding-top: 35px;
+        padding-bottom: 35px;
+        padding-left: 45px;
+        padding-right: 45px;
         box-shadow: -2px 0 8px rgba(0,0,0,0.2);
         border-radius: 6px;
-        gap: 45px;
+        gap: 20px;
+    }
+
+    .modal-content-image-choose {
+        display: flex;
+        flex-direction: column;
+        background-color: white;
+        height: auto;
+        align-items: center;
+        width: 550px;
+        padding-top: 35px;
+        padding-bottom: 35px;
+        padding-left: 45px;
+        padding-right: 45px;
+        box-shadow: -2px 0 8px rgba(0,0,0,0.2);
+        border-radius: 6px;
+        gap: 20px;
+    }
+
+    .image-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        gap: 10px;
+        padding: 20px;
+    }
+
+    .image-item {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        border: 2px solid transparent;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease-in-out;
+        padding: 10px;
+    }
+
+    .image-item:hover {
+        border-color: #0785D4;
+    }
+
+    .image-item.selected {
+        border-color: #0785D4;
+        box-shadow: 0 0 10px rgba(7, 133, 212, 0.5);
+    }
+
+    .image-item img {
+        width: 100px;
+        height: 100px;
+        object-fit: contain;
     }
 
 
