@@ -419,6 +419,7 @@
     main {
         display: flex;
         flex-direction: column;
+        max-width: 1600px;
     }
 
     #masterdata-nav {

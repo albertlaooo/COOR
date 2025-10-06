@@ -1,85 +1,211 @@
 <script setup>
     import { useRouter } from 'vue-router'
-    import { ref, watch, computed, onMounted } from "vue"
+    import { ref, watch, computed, onMounted, onBeforeUnmount } from "vue"
     import axios from "axios";
 
     const router = useRouter()
 
-    // DATA
-    const facultyId = ref()
-    const firstName = ref()
-    const lastName = ref()
-    const department = ref()
-    const departments = ref([])
-    const subjects = ref()
+    // USER DATA INPUT
+    const facultyId = ref('')
+    const firstName = ref('')
+    const lastName = ref('')
+    const department = ref('')
+    const subject = ref('')
 
-    const isVisibleTeacherModal = ref(false)
-
-    // Database Departments list
+    //////////////////////// DEPARTMENT /////////////////////////
+    // List of departments from DB (RAW)
     const departmentsDB = ref([])
 
-    // Database Subjects list
-    const subjectsDB = ref([])
+    // Currently selected department(s)
+    const selectedDepartments = ref([])
 
-    //////////////////////// Department Suggestor /////////////////////////
-    // Filtered list
+    // Filter departments based on user input
     const filteredDepartments = computed(() => {
-    if (!department.value) return []
-    return departmentsDB.value
-    .map(dep => dep.department_name) // extract the names
-    .filter(name =>
-      name.toLowerCase().includes(department.value.toLowerCase())
-    )
+        if (!department.value) {
+            // show all departments if input is blank
+            return departmentsDB.value.map(dep => ({
+                department_id: dep.department_id,
+                department_name: dep.department_name
+            }))
+        }
+
+        // filter based on input if user types
+        return departmentsDB.value
+            .filter(dep =>
+                dep.department_name.toLowerCase().includes(department.value.toLowerCase())
+            )
+            .map(dep => ({
+                department_id: dep.department_id,
+                department_name: dep.department_name
+            }))
     })
 
-    // Select department
+    // Add selected department to list
     function selectDepartment(dep) {
-    departments.value.push(dep)
-    department.value = ''
+        // Check if department already exists
+        const deptExists = selectedDepartments.value.some(d => d.department_name === dep.department_name);
+
+        if (!deptExists) {
+            selectedDepartments.value.push(dep);
+        }  else {
+            alert("This department is already selected!");
+        }
+
+        department.value = '';
+        departmentInputFocused.value = false
+    }
+    
+
+    // fetch departments on DB
+    const fetchDepartments = async () => {
+        try {
+            const res = await axios.get("http://localhost:3000/departments");
+
+            if (res.data && Array.isArray(res.data)) {
+
+            // Clear first para walang duplicate
+            departmentsDB.value.length = 0;
+
+            // Push each item
+            res.data.forEach(dep => {
+                departmentsDB.value.push({
+                department_id: dep.department_id,
+                department_name: dep.department_name,
+                department_code: dep.department_code
+                });
+            });
+            }
+
+        } catch (err) {
+            console.error("Error fetching departments:", err);
+        }
+    }
+    onMounted(fetchDepartments)
+
+    //////////////////////// SUBJECTS /////////////////////////
+    // List of subjects from DB (RAW)
+    const subjectsDB = ref([])
+
+    // Currently selected subject(s)
+    const selectedSubjects = ref([])
+
+    // Filter subjects based on user input
+    const filteredSubjects = computed(() => {
+        if (!subject.value) {
+            // show all subjects if input is blank
+            return subjectsDB.value.map(sub => ({
+                subject_id: sub.subject_id,
+                subject_name: sub.subject_name
+            }))
+        }
+
+        // filter based on input if user types
+        return subjectsDB.value
+            .filter(sub =>
+                sub.subject_name.toLowerCase().includes(subject.value.toLowerCase())
+            )
+            .map(sub => ({
+                subject_id: sub.subject_id,
+                subject_name: sub.subject_name
+            }))
+    })
+
+    // Add selected subject to list
+    function selectSubject(sub) {
+        // Check if subject already exists
+        const subjExists = selectedSubjects.value.some(s => s.subject_name === sub.subject_name);
+
+        if (!subjExists) {
+            selectedSubjects.value.push(sub);
+        } else {
+            alert("This subject is already selected!");
+        }
+
+        subject.value = '';
+        subjectInputFocused.value = false
     }
 
+    
+    // fetch subjects on DB
+    const fetchSubjects = async () => {
+        try {
+            const res = await axios.get("http://localhost:3000/subjects");
+
+            if (res.data && Array.isArray(res.data)) {
+
+            // Clear first para walang duplicate
+            subjectsDB.value.length = 0;
+
+            // Push each item
+            res.data.forEach(dep => {
+                subjectsDB.value.push({
+                subject_id: dep.subject_id,
+                subject_name: dep.subject_name,
+                subject_code: dep.subject_code
+                });
+            });
+            }
+
+        } catch (err) {
+            console.error("Error fetching subjects:", err);
+        }
+    }
+    onMounted(fetchSubjects)
+
     //////////////////////// Availability /////////////////////////
-    const mondayChecked = ref(false)
-    const tuesdayChecked = ref(false)
-    const wednesdayChecked = ref(false)
-    const thursdayChecked = ref(false)
-    const fridayChecked = ref(false)
-    const saturdayChecked = ref(false)
-
-    // Monday
-    const mondayFullDay = ref(false)
-    const mondayfromTime = ref('')
-    const mondaytoTime = ref('')
-
-    // Tuesday
-    const tuesdayFullDay = ref(false)
-    const tuesdayfromTime = ref('')
-    const tuesdaytoTime = ref('')
-
-    // Wednesday
-    const wednesdayFullDay = ref(false)
-    const wednesdayfromTime = ref('')
-    const wednesdaytoTime = ref('')
-
-    // Thursday
-    const thursdayFullDay = ref(false)
-    const thursdayfromTime = ref('')
-    const thursdaytoTime = ref('')
-
-    // Friday
-    const fridayFullDay = ref(false)
-    const fridayfromTime = ref('')
-    const fridaytoTime = ref('')
-
-    // Saturday
-    const saturdayFullDay = ref(false)
-    const saturdayfromTime = ref('')
-    const saturdaytoTime = ref('')
+    const days = ref([
+        { name: "Monday", checked: false, from: "", to: "", full: false, mLeft: '32px' },
+        { name: "Tuesday", checked: false, from: "", to: "", full: false, mLeft: '32px' },
+        { name: "Wednesday", checked: false, from: "", to: "", full: false, mLeft: '8px' },
+        { name: "Thursday", checked: false, from: "", to: "", full: false, mLeft: '26px' },
+        { name: "Friday", checked: false, from: "", to: "", full: false, mLeft: '47px' },
+        { name: "Saturday", checked: false, from: "", to: "", full: false, mLeft: '28px' }
+    ]);
 
     // Default times
     const defaultFrom = '07:00'
     const defaultTo = '17:00'
 
+    // ✅ Watchers per day
+    days.value.forEach(day => {
+        let isSyncing = false
+
+        // Watch full checkbox
+        watch(
+            () => day.full,
+            (newVal) => {
+                if (isSyncing) return
+                isSyncing = true
+
+                if (newVal) {
+                    // ✅ Checked full day → apply defaults
+                    day.from = defaultFrom
+                    day.to = defaultTo
+                } else {
+                    // ✅ Unchecked full day → only clear if still default times
+                    if (day.from === defaultFrom && day.to === defaultTo) {
+                        day.from = ''
+                        day.to = ''
+                    }
+                }
+
+                isSyncing = false
+            }
+        )
+
+        // Watch from/to values to auto-check full day
+        watch(
+            [() => day.from, () => day.to],
+            ([newFrom, newTo]) => {
+                if (isSyncing) return
+                isSyncing = true
+
+                day.full = (newFrom === defaultFrom && newTo === defaultTo)
+
+                isSyncing = false
+            }
+        )
+    })
     //////////////////////// Navigation Function /////////////////////////
     function backBtn() {
         router.push(`/main/masterlist`)
@@ -89,11 +215,11 @@
     const searchQuery = ref("")
     const sortValue = ref("")
 
-    const items = ref([])
+    const teachersDB = ref([])
 
     // Final list = search + sort
-    const filteredItems = computed(() => {
-    let result = [...items.value]
+    const filteredTeachers = computed(() => {
+    let result = [...teachersDB.value]
 
     // 🔎 Search across all fields
     if (searchQuery.value) {
@@ -122,50 +248,257 @@
     return result
     })
 
-    /////////////////////////////// Modal ////////////////////////////
+    /////////////////////////////// TEACHER MODAL ////////////////////////////
+    // For FUNCTION
+    const teacherTitle = ref()
+    const teacherButton = ref()
+    const teacherHandler = ref()
+    const selectedTeacher = ref(null)
+
+    // For UI
+    const showErrorInput = ref(false)
+    const isVisibleTeacherModal = ref(false)
+    const departmentInputFocused = ref(false)
+    const subjectInputFocused = ref(false)
+    const departmentWrapper = ref(null)
+    const subjectWrapper = ref(null)
+    
+    const setSelectedTeacher = (teacher) => {
+        selectedTeacher.value = { ...teacher }
+    }
+
     const teacherConfirm = async () => {
-        try {
-            // Add to Teachers Table
-            const resTeacher = await axios.post("http://localhost:3000/add-teacher", {
-                faculty_id: facultyId.value,
-                first_name: firstName.value.charAt(0).toUpperCase() + firstName.value.slice(1).toLowerCase(),
-                last_name: lastName.value.charAt(0).toUpperCase() + lastName.value.slice(1).toLowerCase(),
-                availability: "jsonFile",
-            });
+        if(facultyId.value !== '' &&
+            firstName.value !== '' &&
+            lastName.value !== '' &&
+            selectedDepartments.value.length !== 0 &&
+            selectedSubjects.value.length !== 0 &&
+            days.value.some(day => day.checked && day.from && day.to)){
+            if(teacherHandler.value === 'add'){
+                showErrorInput.value = false
+                try {
+                    // Add to Teachers Table
+                    const resTeacher = await axios.post("http://localhost:3000/add-teacher", {
+                        faculty_id: facultyId.value,
+                        first_name: firstName.value.charAt(0).toUpperCase() + firstName.value.slice(1).toLowerCase(),
+                        last_name: lastName.value.charAt(0).toUpperCase() + lastName.value.slice(1).toLowerCase()
+                    });
+                    console.log(resTeacher.data.message);
 
-            console.log(resTeacher.data.message);
+                    const teacherId = resTeacher.data.teacher_id;
 
-            const teacherId = resTeacher.data.teacher_id;
-            const departmentsArray = departments.value;
+                    // Add to TeacherDepartments Table
+                    const selectedDepartmentIds = selectedDepartments.value.map(dep => dep.department_id);
+                    const resDept = await axios.post("http://localhost:3000/add-teacher-department", {
+                        teacher_id: teacherId,
+                        department_id: selectedDepartmentIds
+                    });
+                    console.log(resDept.data.message);
 
-            // Add to Teacher Departments
-            const resDept = await axios.post("http://localhost:3000/add-teacher-department", {
-                teacher_id: teacherId,
-                department_name: departmentsArray,
-            });
+                    // Add to TeacherSubjects Table
+                    const selectedSubjectIds = selectedSubjects.value.map(dep => dep.subject_id);
+                    const resSubj = await axios.post("http://localhost:3000/add-teacher-subject", {
+                        teacher_id: teacherId,
+                        subject_id: selectedSubjectIds
+                    });
+                    console.log(resSubj.data.message);
 
-            fetchTeachers();
+                    // Add to TeacherAvailability Table
+                    const payload = {
+                    teacherId: teacherId,
+                    days: days.value
+                        .filter(day => day.checked) // only send checked days
+                        .map(({ name, from, to }) => ({ name, from, to })) // ignore mLeft and full
+                    };
 
-            console.log(resDept.data.message);
-        } catch (error) {
-            console.error("Error:", error);
-            console.log("Failed to add teacher.");
+                    const resAvail = await axios.post("http://localhost:3000/add-teacher-availability", payload);
+                    console.log(resAvail.data.message);
+
+                    fetchTeachers();
+                    
+                } catch (error) {
+                    console.error("Error:", error);
+                    console.log("Failed to add teacher.");
+                }
+                alert("Add teacher Successfully!");
+                isVisibleTeacherModal.value = !isVisibleTeacherModal.value;
+                resetInputs();
+            }
+
+            else if(teacherHandler.value === 'update'){
+                try {
+                    const res = await axios.put(`http://localhost:3000/update-teacher/${selectedTeacher.value.teacher_id}`, {
+                        faculty_id: facultyId.value,
+                        first_name: firstName.value.charAt(0).toUpperCase() + firstName.value.slice(1).toLowerCase(),
+                        last_name: lastName.value.charAt(0).toUpperCase() + lastName.value.slice(1).toLowerCase()
+                    });
+
+                    const teacherId = selectedTeacher.value.teacher_id;
+
+                    // Delete all existing departments for this teacher, then insert the new ones
+                    // --- Update TeacherDepartments ---
+                    await axios.delete(`http://localhost:3000/delete-teacher-departments/${teacherId}`);
+                    const selectedDepartmentIds = selectedDepartments.value.map(dep => dep.department_id);
+                    if (selectedDepartmentIds.length > 0) {
+                        await axios.post("http://localhost:3000/add-teacher-department", {
+                            teacher_id: teacherId,
+                            department_id: selectedDepartmentIds
+                        });
+                    }
+
+                    // --- Update TeacherSubjects ---
+                    await axios.delete(`http://localhost:3000/delete-teacher-subjects/${teacherId}`);
+                    const selectedSubjectIds = selectedSubjects.value.map(dep => dep.subject_id);
+                    if (selectedSubjectIds.length > 0) {
+                        await axios.post("http://localhost:3000/add-teacher-subject", {
+                            teacher_id: teacherId,
+                            subject_id: selectedSubjectIds
+                        });
+                    }
+
+                    // --- Update TeacherSubjects ---
+                    await axios.delete(`http://localhost:3000/delete-teacher-availability/${teacherId}`);
+                    const payload = {
+                    teacherId: teacherId,
+                    days: days.value
+                        .filter(day => day.checked) // only send checked days
+                        .map(({ name, from, to }) => ({ name, from, to })) // ignore mLeft and full
+                    };
+
+                    const resAvail = await axios.post("http://localhost:3000/add-teacher-availability", payload);
+                    console.log(resAvail.data.message);
+
+                console.log(res.data.message);
+                alert("Teacher updated successfully!");
+                
+                fetchTeachers();
+                selectedTeacher.value = null;
+                toggleTeacherModal();
+
+                // Reset Inputs
+                resetInputs()
+                } catch (error) {
+                    console.error("Error:", error);
+                    alert("Failed to update teacher.");
+                }
+            }
         }
-        alert("Add teacher Successfully!");
-        isVisibleTeacherModal.value = !isVisibleTeacherModal.value;
+        else {
+            showErrorInput.value = false
+            setTimeout(() => { showErrorInput.value = true; }, 0);
+        }
+
     };
 
+    const toggleTeacherModal = async (which) => {
+        isVisibleTeacherModal.value = !isVisibleTeacherModal.value
+
+        if(which === 'add'){
+            teacherTitle.value = 'Teacher Information'
+            teacherButton.value = 'Confirm'
+            teacherHandler.value = 'add'
+        }
+
+        else if(which === 'update'){
+            teacherTitle.value = 'Update Information'
+            teacherButton.value = 'Update'
+            teacherHandler.value = 'update'
+            facultyId.value = selectedTeacher.value.faculty_id
+            firstName.value = selectedTeacher.value.first_name
+            lastName.value = selectedTeacher.value.last_name
+
+            try {
+                // Fetch departments
+                const { data: deptData } = await axios.get(`http://localhost:3000/teacher-departments/${selectedTeacher.value.teacher_id}`);
+                if (deptData.success) {
+                    selectedDepartments.value = deptData.departments;
+                }
+
+                // Fetch subjects
+                const { data: subjData } = await axios.get(`http://localhost:3000/teacher-subjects/${selectedTeacher.value.teacher_id}`);
+                if (subjData.success) {
+                    selectedSubjects.value = subjData.subjects;
+                }
+
+                // Fetch availability
+                try {
+                    const { data: availData } = await axios.get(
+                        `http://localhost:3000/teacher-availability/${selectedTeacher.value.teacher_id}`
+                );
+
+                if (availData.success) {
+                    // Map the fetched availability into days array
+                    availData.availability.forEach(avail => {
+                    const day = days.value.find(d => d.name === avail.day_of_week);
+                    if (day) {
+                        day.checked = true;
+                        day.from = avail.time_from || "";
+                        day.to = avail.time_to || "";
+                    }
+                    });
+
+                    console.log("Mapped days:", days.value);
+                }
+                } catch (error) {
+                    console.error("Error fetching availability:", error);
+                }
+
+
+
+            } catch (err) {
+                console.error(err);
+            }
+        }
+        
+        else if('cancel'){
+            resetInputs();
+            showErrorInput.value = false
+        }
+    }
+
+    function removeDepartment(index) {
+        const deptToRemove = selectedDepartments.value[index]
+        selectedDepartments.value = selectedDepartments.value.filter(dep => dep !== deptToRemove)
+    }
+
+    function removeSubject(index) {
+        const subjToRemove = selectedSubjects.value[index]
+        selectedSubjects.value = selectedSubjects.value.filter(subj => subj !== subjToRemove)
+    }
+
+    // Close dropdown when clicked outside
+    function handleClickOutside(event) {
+        // Department
+        if (departmentWrapper.value && !departmentWrapper.value.contains(event.target)) {
+            departmentInputFocused.value = false
+        }
+
+        // Subject
+        if (subjectWrapper.value && !subjectWrapper.value.contains(event.target)) {
+            subjectInputFocused.value = false
+        }
+    }
+
+    onMounted(() => {
+        document.addEventListener('mousedown', handleClickOutside)
+    })
+
+    onBeforeUnmount(() => {
+        document.removeEventListener('mousedown', handleClickOutside)
+    })
 
     /////////////////////////////// FETCH TEACHERS ////////////////////////////
     const fetchTeachers = async () => {
     try {
         const res = await axios.get("http://localhost:3000/teachers")
 
-        items.value = res.data.map(teacher => ({
+        teachersDB.value = res.data.map(teacher => ({
             teacher_id: teacher.teacher_id,
             faculty_id: teacher.faculty_id,
             first_name: teacher.first_name,
             last_name: teacher.last_name,
+            departments: teacher.departments,
+            subjects: teacher.subjects,
             availability: teacher.availability
         }));
 
@@ -176,63 +509,42 @@
 
     onMounted(fetchTeachers);
 
-    /////////////////////////////// FETCH DEPARTMENTS ////////////////////////////
-    const fetchDepartments = async () => {
+    /////////////////////////////// DELETE TEACHER ////////////////////////////
+    const deleteTeacher = async (id) => {
+        if (!confirm("Are you sure you want to delete this teacher?")) {
+            return
+        }
+
         try {
-            const res = await axios.get("http://localhost:3000/departments");
-
-            if (res.data && Array.isArray(res.data)) {
-
-            // Clear first para walang duplicate
-            departmentsDB.value.length = 0;
-
-            // Push each item
-            res.data.forEach(dep => {
-                departmentsDB.value.push({
-                department_id: dep.department_id,
-                department_name: dep.department_name,
-                department_code: dep.department_code
-                });
-            });
-            }
-
-            console.log("Departments:", departmentsDB);
-
+            await axios.delete(`http://localhost:3000/teachers/${id}`)
+            teachersDB.value = teachersDB.value.filter(t => t.teacher_id !== id)
+            alert("Deleted Successfully.")
+            fetchTeachers()
         } catch (err) {
-            console.error("Error fetching departments:", err);
+            console.error("Error deleting teacher:", err)
+            alert("Failed to delete teacher.")
         }
     }
 
-    onMounted(fetchDepartments)
+    ///////////////////////////// RESET INPUT ////////////////////////////
+    function resetInputs(){
+        setTimeout(() => {
+            facultyId.value = ''
+            firstName.value = ''
+            lastName.value = ''
+            department.value = ''
+            selectedDepartments.value.splice(0, selectedDepartments.value.length)
+            subject.value = ''
+            selectedSubjects.value.splice(0, selectedSubjects.value.length)
 
-    /////////////////////////////// Modal ////////////////////////////
-    // Helper function to watch a day
-    function watchFullDay(fullDayRef, fromRef, toRef) {
-    watch(fullDayRef, (newVal) => {
-        if (newVal) {
-        fromRef.value = defaultFrom
-        toRef.value = defaultTo
-        } else {
-        fromRef.value = ''
-        toRef.value = ''
-        }
-    })
-    }
-
-    // Apply watcher for all days
-    watchFullDay(mondayFullDay, mondayfromTime, mondaytoTime)
-    watchFullDay(tuesdayFullDay, tuesdayfromTime, tuesdaytoTime)
-    watchFullDay(wednesdayFullDay, wednesdayfromTime, wednesdaytoTime)
-    watchFullDay(thursdayFullDay, thursdayfromTime, thursdaytoTime)
-    watchFullDay(fridayFullDay, fridayfromTime, fridaytoTime)
-    watchFullDay(saturdayFullDay, saturdayfromTime, saturdaytoTime)
-
-    const toggleTeacherModal = (AddorUpdate) => {
-        isVisibleTeacherModal.value = !isVisibleTeacherModal.value
-
-        if(AddorUpdate == 'update'){
-            
-        }
+            // Reset the existing day objects
+            days.value.forEach(day => {
+                day.checked = false
+                day.from = ""
+                day.to = ""
+                day.full = false
+            });
+        }, 100);
     }
 </script>
 
@@ -290,7 +602,7 @@
                     <option value="avail-desc">Availability (More)</option>
                 </select>
 
-                <button @click="toggleTeacherModal"  style="margin-left: auto; width: 200px;">+ Add Teacher</button>
+                <button @click="toggleTeacherModal('add')"  style="margin-left: auto; width: 200px;">+ Add Teacher</button>
             </div>
 
                 <table>
@@ -299,22 +611,30 @@
                             <th>Faculty ID</th>
                             <th>Name</th>
                             <th>Departments</th>
+                            <th>Subjects</th>
                             <th>Availability</th>
                             <th style="width: 130px">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="item in filteredItems" :key="item.id">
+                        <!-- Check if there are any teachers -->
+                        <tr v-if="filteredTeachers.length === 0" style="">
+                            <td colspan="6" style="height: 40px; color: #444141; text-align: center;">--- No Teachers ---</td>
+                        </tr>
+
+                         <!-- Render teacher rows if available -->
+                        <tr v-for="item in filteredTeachers" :key="item.id">
                         <td>{{ item.faculty_id }}</td>
                         <td>{{ item.first_name + ', ' + item.last_name }}</td>
-                        <td>{{ item.departments }}</td>
-                        <td>{{ item.availability }}</td>
+                        <td :title="item.departments.replaceAll(/,\s*/g, '\n')">{{ item.departments }}</td>
+                        <td :title="item.subjects.replaceAll(/,\s*/g, '\n')">{{ item.subjects }}</td>
+                        <td :title="item.availability.replaceAll(/,\s*/g, '\n')">{{ item.availability }}</td>
                         <td>
                             <div style="display: flex; flex-direction: row; gap: 5px; align-items: center; width: 130px;">
-                                <button class="outlineBtn" style="font-size: 1.2rem; padding: 3px 6px;">
+                                <button @click="deleteTeacher(item.teacher_id)" class="outlineBtn" style="font-size: 1.2rem; padding: 3px 6px;">
                                     <i class='bx bx-trash'></i>
                                 </button>
-                                <button @click="toggleTeacherModal('update')" style="font-size: 1.2rem; padding: 4px 12px;">
+                                <button @click="setSelectedTeacher(item); toggleTeacherModal('update')" style="font-size: 1.2rem; padding: 4px 12px;">
                                     <i class='bx bx-edit-alt'></i>
                                 </button>
                             </div>
@@ -326,9 +646,9 @@
 
         <!-- Add Teacher Modal -->
         <transition name="fade">
-            <div v-show="isVisibleTeacherModal" class="modal" @click.self="toggleTeacherModal">
+            <div v-show="isVisibleTeacherModal" class="modal" @click.self="toggleTeacherModal('cancel')">
                <div class="modal-content">
-                    <h2 style="color: var(--color-primary); line-height: 0;">Teacher Information</h2>
+                    <h2 style="color: var(--color-primary); line-height: 0;">{{ teacherTitle }}</h2>
 
                     <div style="display: flex; flex-direction: row; width: 100%; gap: 60px;">
 
@@ -336,225 +656,166 @@
                         <div style="display: flex; flex-direction: column; gap: 14px; flex: 1">
                             <div>
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Faculity ID</p>
-                                <input v-model="facultyId"></input>
+                                <input v-model="facultyId" :class="{ 'error-input-border': showErrorInput && facultyId.trim() === '' }"></input>
                             </div>
 
                              <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; column-gap: 15px; ">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">First Name</p>
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Last Name</p>
-                                <input v-model="firstName"></input>
-                                <input v-model="lastName"></input>
+                                <input v-model="firstName" :class="{ 'error-input-border': showErrorInput && firstName.trim() === '' }"></input>
+                                <input v-model="lastName" :class="{ 'error-input-border': showErrorInput && lastName.trim() === '' }"></input>
                             </div>
 
-                             <div style="position: relative; width: 100%;">
+                            <!-- Departments -->
+                             <div style="position: relative; width: 100%;" ref="departmentWrapper">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Department</p>
-                                <input v-model="department"></input>
+                                <input v-model="department"  
+                                        @focus="departmentInputFocused = true"></input>
 
                                 <!-- Dropdown suggestions -->
-                                <div v-if="filteredDepartments.length" 
+                                <div v-if="departmentInputFocused && filteredDepartments.length" 
                                     style="position: absolute; display: flex; flex-direction: column; background-color: white;
                                             width: 100%;  padding-top: 6px; padding-bottom: 6px; border-radius: 6px; border: 1px solid var(--color-border);
                                             margin-top: 6px; box-sizing: border-box;
                                             max-height: 200px; overflow-y: auto;"> 
 
                                     <div v-for="(dep, index) in filteredDepartments" 
-                                        :key="index"
+                                        :key="dep.department_id"
                                         @click="selectDepartment(dep)"
                                         class="dropdown-item">
-                                        {{ dep }}
+                                        {{ dep.department_name }}
                                     </div>
                                 </div>
                                 <!-- Selected Departments -->
-                                <div style="display: flex; flex-direction: column; background-color: var(--color-main-background);
-                                            width: 100%; height: 120px; overflow-y: auto; min-height: 80px; border-radius: 6px; border: 1px solid var(--color-border);
-                                            margin-top: 6px; padding-left: 16px; padding-right: 16px; padding-top: 8px; padding-bottom: 8px; box-sizing: border-box;">
+                                <div class="selected-dept-subj" 
+                                    :class="{ 'error-input-border': showErrorInput && selectedDepartments.length === 0 }">
 
-                                    <label v-for="dept in departments" :key="dept" style="margin-bottom: 4px;">
-                                        {{ dept }}
-                                    </label>
+                                    <!-- show a placeholder when empty -->
+                                    <div v-if="selectedDepartments.length === 0">
+                                        <p class="paragraph--gray">No departments selected</p>
+                                    </div>
+
+                                    <div v-for="(dept, index) in selectedDepartments" :key="dept"
+                                        style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label> {{ dept.department_name }} </label>
+                                        
+                                        <span @click="removeDepartment(index)"
+                                                style="display: flex; align-items: center; justify-content: center;
+                                                    height: 30px; width: 30px; color: red; font-weight: bold; 
+                                                    cursor: pointer;">
+                                            ✕
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 
-                             <div>
+                            <!-- Subjects -->
+                             <div style="position: relative; width: 100%;" ref="subjectWrapper">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Subjects</p>
-                                <input v-model="subjects"></input>
-                                <div style="display: flex; flex-direction: column; background-color: var(--color-main-background);
-                                            width: 100%; height: auto; min-height: 80px; border-radius: 6px; border: 1px solid var(--color-border);
-                                            margin-top: 6px; padding: 12px; box-sizing: border-box;">
+                                <input v-model="subject" 
+                                        @focus="subjectInputFocused = true"></input>
+
+                                <!-- Dropdown suggestions -->
+                                <div v-if="subjectInputFocused && filteredSubjects.length" 
+                                    style="position: absolute; display: flex; flex-direction: column; background-color: white;
+                                            width: 100%;  padding-top: 6px; padding-bottom: 6px; border-radius: 6px; border: 1px solid var(--color-border);
+                                            margin-top: 6px; box-sizing: border-box;
+                                            max-height: 200px; overflow-y: auto;"> 
+
+                                    <div v-for="(dep, index) in filteredSubjects" 
+                                        :key="dep.subject_id"
+                                        @click="selectSubject(dep)"
+                                        class="dropdown-item">
+                                        {{ dep.subject_name }}
+                                    </div>
                                 </div>
+
+                                <!-- Selected Subjects -->
+                                <div class="selected-dept-subj" 
+                                    :class="{ 'error-input-border': showErrorInput && selectedSubjects.length === 0 }">
+
+                                    <!-- show a placeholder when empty -->
+                                    <div v-if="selectedSubjects.length === 0">
+                                        <p class="paragraph--gray">No subjects selected</p>
+                                    </div>
+
+                                    <div v-for="(dept, index) in selectedSubjects" :key="dept" 
+                                        style="display: flex; justify-content: space-between; align-items: center;">
+                                        <label>{{ dept.subject_name }}</label>
+
+                                        <span @click="removeSubject(index)"
+                                                style="display: flex; align-items: center; justify-content: center;
+                                                    height: 30px; width: 30px; color: red; font-weight: bold; 
+                                                    cursor: pointer;">
+                                            ✕
+                                        </span>
+                                    </div>
+                                    
+                                </div>
+
                             </div>
                             
                         </div>
 
                         <!-- Right section -->
-                        <div style="display: flex; flex-direction: column; width: auto; min-width: 460px;" :style="{gap: mondayChecked ? '0px' : '8px' }">
+                        <div style="display: flex; flex-direction: column; width: auto; min-width: 460px;" :style="{gap: (days.find(day => day.name === 'Monday')?.checked ? '0px' : '8px') }">
                             <p class="paragraph--black-bold" style="line-height: 1.8;">Availability</p>
 
-                            <div style="display: flex; flex-direction: column;" :style="{gap: mondayChecked || tuesdayChecked || wednesdayChecked || thursdayChecked || fridayChecked || saturdayChecked ? '12px' : '0px' }">
-                                <!-- Monday -->
-                                <div style="display: flex; flex-direction: row; align-items: end; gap: 8px; ">
-                                    <div style="display: flex; flex-direction: row; align-items: center; gap: 8px; margin-bottom: 13px;">
-                                        <input type="checkbox" v-model="mondayChecked"></input>
-                                        <p class="paragraph--gray">Monday</p>
-                                    </div>
-                                    
+                            <div style="display: flex; flex-direction: column;" :style="{gap: days.some(day => day.checked) ? '12px' : '0px' }">
+                                <div v-for="(day, index) in days" 
+                                    :key="index" 
+                                    style="display: flex; flex-direction: row; align-items: end; gap: 8px; ">
 
-                                    <div v-show="mondayChecked" style="display: flex; flex-direction: row; gap: 6px; margin-left: 32px; align-items: center;">
+                                    <!-- Checkbox + Day Name -->
+                                    <div style="display: flex; flex-direction: row; align-items: center; gap: 8px; margin-bottom: 13px;">
+                                        <input type="checkbox" v-model="day.checked"></input>
+                                        <p class="paragraph--gray">{{ day.name}}</p>
+                                    </div>
+
+                                    <!-- Availability Time -->
+                                    <div v-show="day.checked" 
+                                        :style="{ display: 'flex', flexDirection: 'row', gap: '6px', alignItems: 'center', marginLeft: day.mLeft }">
                                         <div>
                                             <p class="paragraph--gray">From</p>
-                                            <input type="time" v-model="mondayfromTime" min="09:00" max="18:00" step="900" placeholder="From"></input>
+                                            <input type="time" v-model="day.from" min="09:00" max="18:00" step="900" placeholder="From"
+                                                    :class="{ 'error-input-border': showErrorInput && day.checked && day.from === '' }"></input>
                                         </div>
                                         <p class="paragraph--gray" style="margin-top: 26px;">-</p>
                                         <div>
                                             <p class="paragraph--gray">To</p>
-                                            <input type="time" v-model="mondaytoTime" min="09:00" max="18:00" step="900" placeholder="To"></input>
+                                            <input type="time" v-model="day.to" min="09:00" max="18:00" step="900" placeholder="To"></input>
                                         </div>
 
                                         <div style="display: flex; flex-direction: row; gap: 6px; margin-top: 20px; align-items: center;">
-                                            <input type="checkbox" v-model="mondayFullDay"></input>
+                                            <input type="checkbox" v-model="day.full"></input>
                                             <p class="paragraph--black-bold">Full day</p>
                                         </div>
                                         
                                     </div>
                                 </div>
-
-                                <!-- Tuesday -->
-                                <div style="display: flex; flex-direction: row; align-items: end; gap: 8px; ">
-                                    <div style="display: flex; flex-direction: row; align-items: center; gap: 8px; margin-bottom: 13px;">
-                                        <input type="checkbox" v-model="tuesdayChecked"></input>
-                                        <p class="paragraph--gray">Tuesday</p>
-                                    </div>
-                                    
-
-                                    <div v-show="tuesdayChecked" style="display: flex; flex-direction: row; gap: 6px; margin-left: 32px; align-items: center;">
-                                        <div>
-                                            <p class="paragraph--gray">From</p>
-                                            <input type="time" v-model="tuesdayfromTime" min="09:00" max="18:00" step="900" placeholder="From"></input>
-                                        </div>
-                                        <p class="paragraph--gray" style="margin-top: 26px;">-</p>
-                                        <div>
-                                            <p class="paragraph--gray">To</p>
-                                            <input type="time" v-model="tuesdaytoTime" min="09:00" max="18:00" step="900" placeholder="To"></input>
-                                        </div>
-
-                                        <div style="display: flex; flex-direction: row; gap: 6px; margin-top: 20px; align-items: center;">
-                                            <input type="checkbox" v-model="tuesdayFullDay"></input>
-                                            <p class="paragraph--black-bold">Full day</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Wednesday -->
-                                <div style="display: flex; flex-direction: row; align-items: end; gap: 8px; ">
-                                    <div style="display: flex; flex-direction: row; align-items: center; gap: 8px; margin-bottom: 13px;">
-                                        <input type="checkbox" v-model="wednesdayChecked"></input>
-                                        <p class="paragraph--gray">Wednesday</p>
-                                    </div>
-                                    
-
-                                    <div v-show="wednesdayChecked" style="display: flex; flex-direction: row; gap: 6px; margin-left: 8px; align-items: center;">
-                                        <div>
-                                            <p class="paragraph--gray">From</p>
-                                            <input type="time" v-model="wednesdayfromTime" min="09:00" max="18:00" step="900" placeholder="From"></input>
-                                        </div>
-                                        <p class="paragraph--gray" style="margin-top: 26px;">-</p>
-                                        <div>
-                                            <p class="paragraph--gray">To</p>
-                                            <input type="time" v-model="wednesdaytoTime" min="09:00" max="18:00" step="900" placeholder="To"></input>
-                                        </div>
-
-                                        <div style="display: flex; flex-direction: row; gap: 6px; margin-top: 20px; align-items: center;">
-                                            <input type="checkbox" v-model="wednesdayFullDay"></input>
-                                            <p class="paragraph--black-bold">Full day</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Thursday -->
-                                <div style="display: flex; flex-direction: row; align-items: end; gap: 8px; ">
-                                    <div style="display: flex; flex-direction: row; align-items: center; gap: 8px; margin-bottom: 13px;">
-                                        <input type="checkbox" v-model="thursdayChecked"></input>
-                                        <p class="paragraph--gray">Thursday</p>
-                                    </div>
-                                    
-
-                                    <div v-show="thursdayChecked" style="display: flex; flex-direction: row; gap: 6px; margin-left: 26px; align-items: center;">
-                                        <div>
-                                            <p class="paragraph--gray">From</p>
-                                            <input type="time" v-model="thursdayfromTime" min="09:00" max="18:00" step="900" placeholder="From"></input>
-                                        </div>
-                                        <p class="paragraph--gray" style="margin-top: 26px;">-</p>
-                                        <div>
-                                            <p class="paragraph--gray">To</p>
-                                            <input type="time" v-model="thursdaytoTime" min="09:00" max="18:00" step="900" placeholder="To"></input>
-                                        </div>
-
-                                        <div style="display: flex; flex-direction: row; gap: 6px; margin-top: 20px; align-items: center;">
-                                            <input type="checkbox" v-model="thursdayFullDay"></input>
-                                            <p class="paragraph--black-bold">Full day</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Friday -->
-                                <div style="display: flex; flex-direction: row; align-items: end; gap: 8px; ">
-                                    <div style="display: flex; flex-direction: row; align-items: center; gap: 8px; margin-bottom: 13px;">
-                                        <input type="checkbox" v-model="fridayChecked"></input>
-                                        <p class="paragraph--gray">Friday</p>
-                                    </div>
-                                    
-
-                                    <div v-show="fridayChecked" style="display: flex; flex-direction: row; gap: 6px; margin-left: 47px; align-items: center;">
-                                        <div>
-                                            <p class="paragraph--gray">From</p>
-                                            <input type="time" v-model="fridayfromTime" min="09:00" max="18:00" step="900" placeholder="From"></input>
-                                        </div>
-                                        <p style="margin-top: 26px;">-</p>
-                                        <div>
-                                            <p class="paragraph--gray">To</p>
-                                            <input type="time" v-model="fridaytoTime" min="09:00" max="18:00" step="900" placeholder="To"></input>
-                                        </div>
-
-                                        <div style="display: flex; flex-direction: row; gap: 6px; margin-top: 20px; align-items: center;">
-                                            <input type="checkbox" v-model="fridayFullDay"></input>
-                                            <p class="paragraph--black-bold">Full day</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Saturday -->
-                                <div style="display: flex; flex-direction: row; align-items: end; gap: 8px; ">
-                                    <div style="display: flex; flex-direction: row; align-items: center; gap: 8px; margin-bottom: 13px;">
-                                        <input type="checkbox" v-model="saturdayChecked"></input>
-                                        <p class="paragraph--gray">Saturday</p>
-                                    </div>
-                                    
-
-                                    <div v-show="saturdayChecked" style="display: flex; flex-direction: row; gap: 6px; margin-left: 28px; align-items: center;">
-                                        <div>
-                                            <p class="paragraph--gray">From</p>
-                                            <input type="time" v-model="saturdayfromTime" min="09:00" max="18:00" step="900" placeholder="From"></input>
-                                        </div>
-                                        <p class="paragraph--gray" style="margin-top: 26px;">-</p>
-                                        <div>
-                                            <p class="paragraph--gray">To</p>
-                                            <input type="time" v-model="saturdaytoTime" min="09:00" max="18:00" step="900" placeholder="To"></input>
-                                        </div>
-
-                                        <div style="display: flex; flex-direction: row; gap: 6px; margin-top: 20px; align-items: center;">
-                                            <input type="checkbox" v-model="saturdayFullDay"></input>
-                                            <p class="paragraph--black-bold">Full day</p>
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
 
+                            <!-- no input message -->
+                            <div v-if="showErrorInput && days.every(day => !day.checked)"
+                                style="display: flex; flex-direction: row; width: fit-content; background-color: #ffe6e6; border: 1px solid red; border-radius: 8px; padding: 9px; gap: 6px; animation: scalePulse 0.3s ease;">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <g clip-path="url(#clip0_408_455)">
+                                    <path d="M23.7299 20.0474C24.499 21.3597 23.5336 23 21.9975 23H2.00228C0.463236 23 -0.497681 21.3571 0.269902 20.0474L10.2677 2.98376C11.0371 1.67089 12.9643 1.67327 13.7324 2.98376L23.7299 20.0474ZM12 16.5195C10.9415 16.5195 10.0834 17.3642 10.0834 18.4062C10.0834 19.4483 10.9415 20.293 12 20.293C13.0586 20.293 13.9167 19.4483 13.9167 18.4062C13.9167 17.3642 13.0586 16.5195 12 16.5195ZM10.1803 9.73776L10.4894 15.3159C10.5039 15.5769 10.7231 15.7812 10.9887 15.7812H13.0114C13.2769 15.7812 13.4962 15.5769 13.5107 15.3159L13.8197 9.73776C13.8354 9.45582 13.6073 9.21875 13.3205 9.21875H10.6795C10.3927 9.21875 10.1647 9.45582 10.1803 9.73776Z" fill="red"/>
+                                    </g>
+                                    <defs>
+                                    <clipPath id="clip0_408_455">
+                                    <rect width="24" height="21" fill="white" transform="translate(0 2)"/>
+                                    </clipPath>
+                                    </defs>
+                                </svg>
+                                <p style="color: red;">Please select at least one day.</p>
+                            </div>
+                            
                         </div>
                     </div>
-
                     <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
-                        <button @click="toggleTeacherModal" class="cancelBtn">Cancel</button>
-                        <button @click="teacherConfirm">Confirm</button>
+                        <button @click="toggleTeacherModal('cancel')" class="cancelBtn">Cancel</button>
+                        <button @click="teacherConfirm">{{ teacherButton }}</button>
                     </div>
                </div>
             </div>
@@ -607,7 +868,19 @@
     }
     td {
         border-bottom: 1px solid #333; 
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        cursor: pointer;
     }
+
+    
+
+    tr td:nth-child(1) { min-width: 80px; max-width: 100px;}
+    tr td:nth-child(2) { max-width: 150px; }
+    tr td:nth-child(3) { max-width: 120px; }
+    tr td:nth-child(4) { max-width: 120px; }
+    tr td:nth-child(5) { max-width: 120px; }
 
     .modal-content {
         display: flex;
@@ -637,6 +910,24 @@
 
     .dropdown-item:hover {
         background: #eee;
+    }
+
+    .selected-dept-subj {
+        display: flex; 
+        flex-direction: column; 
+        background-color: var(--color-main-background);
+        width: 100%; 
+        height: 120px; 
+        overflow-y: auto; 
+        min-height: 80px; 
+        border-radius: 6px; 
+        margin-top: 6px; 
+        border: 1px solid var(--color-border);
+        padding-left: 16px; 
+        padding-right: 16px; 
+        padding-top: 8px; 
+        padding-bottom: 8px; 
+        box-sizing: border-box;
     }
 
 </style>

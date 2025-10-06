@@ -123,6 +123,27 @@ button:disabled {
   opacity: 0.6;
 }
 
+.whiteBtn {
+  padding-top: 9px;
+  padding-bottom: 9px;
+  padding-left: 22px;
+  padding-right: 22px;
+
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--color-primary);
+
+  background-color: white;
+  border-radius: 6px;
+
+  cursor: pointer;
+  transition: background-color 0.1s;
+}
+.whiteBtn:hover {
+  background-color: #e0e0e0;
+  transition: background-color 0.1s;
+}
+
 .outlineBtn {
   font-size: 0.9rem;
   font-weight: 500;
@@ -238,6 +259,24 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.error-input-border {
+  border: 2px solid red !important;
+  animation: scalePulse 0.3s ease;
+}
+
+
+@keyframes scalePulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 /* Light theme override */
