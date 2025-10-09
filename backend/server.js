@@ -20,11 +20,6 @@ const db = new sqlite3.Database("./coor.db", (err) => {
   else console.log("Connected to SQLite database");
 });
 
-// Start server
-app.listen(3000, () => {
-  console.log("Backend running at http://localhost:3000");
-});
-
 // Create tables
 db.serialize(() => {
     // Enable foreign key enforcement
@@ -90,6 +85,32 @@ db.serialize(() => {
     `);
 
     db.run(`
+      CREATE TABLE IF NOT EXISTS Sections (
+            section_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            course_name TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            semester INTEGER NOT NULL,
+            section TEXT NOT NULL,
+            student_count INTEGER,
+            academic_year TEXT NOT NULL,
+            section_format TEXT NOT NULL
+          );
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS SectionsArchived (
+            section_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            course_name TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            semester INTEGER NOT NULL,
+            section TEXT NOT NULL,
+            student_count INTEGER,
+            academic_year TEXT NOT NULL,
+            section_format TEXT NOT NULL
+          );
+    `);
+
+    db.run(`
       CREATE TABLE IF NOT EXISTS Departments (
             department_id INTEGER PRIMARY KEY AUTOINCREMENT,
             department_image INTEGER,
@@ -103,8 +124,22 @@ db.serialize(() => {
             course_id INTEGER PRIMARY KEY AUTOINCREMENT,
             course_image INTEGER,
             course_name TEXT NOT NULL UNIQUE,
-            course_code TEXT NOT NULL UNIQUE
+            course_code TEXT NOT NULL UNIQUE,
+            department_id INTEGER,
+            FOREIGN KEY (department_id) REFERENCES Departments(department_id)
           );
+    `);
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS CourseSubjects (
+          course_id INTEGER NOT NULL,
+          subject_id INTEGER NOT NULL,
+          year INTEGER NOT NULL,
+          semester INTEGER NOT NULL,
+          PRIMARY KEY (course_id, subject_id, year, semester),
+          FOREIGN KEY (course_id) REFERENCES Courses(course_id) ON DELETE CASCADE,
+          FOREIGN KEY (subject_id) REFERENCES Subjects(subject_id) ON DELETE CASCADE
+      );
     `);
 
     db.run(`
@@ -114,7 +149,9 @@ db.serialize(() => {
           subject_code TEXT NOT NULL UNIQUE,
           units INTEGER NOT NULL,
           lecture INTEGER NOT NULL,
-          laboratory INTEGER NOT NULL
+          laboratory INTEGER NOT NULL,
+          year INTEGER NOT NULL,
+          semester INTEGER NOT NULL
         );
     `);
 
@@ -126,7 +163,11 @@ db.serialize(() => {
           capacity INTEGER NOT NULL
         );
     `);
+
+            
+
 });
+
 
 // Login endpoint
 app.post("/login", (req, res) => {
@@ -317,6 +358,23 @@ app.delete("/delete-teacher-departments/:teacherId", (req, res) => {
     });
 });
 
+// GET all teacher-department associations
+app.get("/teacher-departments", (req, res) => {
+    const sql = `
+        SELECT teacher_id, department_id 
+        FROM TeacherDepartments
+    `;
+
+    db.all(sql, [], (err, rows) => {
+        if (err) {
+            console.error("Error fetching teacher departments:", err.message);
+            return res.status(500).json({ success: false, message: "Database error" });
+        }
+
+        res.json({ success: true, associations: rows });
+    });
+});
+
 
 /*////////////////////////////////////////////////////////////////////////
 /////////////////////////  TEACHER SUBJECT  ///////////////////////////
@@ -466,6 +524,290 @@ app.delete("/delete-teacher-availability/:teacherId", (req, res) => {
 });
 
 /*////////////////////////////////////////////////////////////////////////
+/////////////////////////  SECTIONS  ///////////////////////////////////
+////////////////////////////////////////////////////////////////////////*/ 
+// CREATE Section
+app.post("/add-section", (req, res) => {
+  const {
+    course_name,
+    year,
+    semester,
+    section,
+    student_count,
+    academic_year,
+    section_format,
+  } = req.body;
+
+  if (
+    !course_name ||
+    !year ||
+    !semester ||
+    !section ||
+    !academic_year ||
+    !section_format
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing required fields",
+    });
+  }
+
+  const sql = `
+    INSERT INTO Sections (course_name, year, semester, section, student_count, academic_year, section_format)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  db.run(
+    sql,
+    [
+      course_name,
+      year,
+      semester,
+      section,
+      student_count || 0,
+      academic_year,
+      section_format,
+    ],
+    function (err) {
+      if (err) {
+        console.error("Error inserting section:", err.message);
+        return res.status(500).json({
+          success: false,
+          message: "Database error",
+          error: err.message,
+        });
+      }
+      res.json({
+        success: true,
+        message: "Section added successfully",
+        section_id: this.lastID,
+      });
+    }
+  );
+});
+
+// READ all Sections
+app.get("/sections", (req, res) => {
+  db.all("SELECT * FROM Sections", [], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(rows);
+  });
+});
+
+// UPDATE Section (No vue code yet)
+app.put("/update-section/:id", (req, res) => {
+  const { id } = req.params;
+  const {
+    course_name,
+    year,
+    semester,
+    section,
+    student_count,
+    academic_year,
+    section_format,
+  } = req.body;
+
+  if (
+    !course_name ||
+    !year ||
+    !semester ||
+    !section ||
+    !academic_year ||
+    !section_format
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing required fields",
+    });
+  }
+
+  const sql = `
+    UPDATE Sections 
+    SET course_name = ?, year = ?, semester = ?, section = ?, student_count = ?, academic_year = ?, section_format = ?
+    WHERE section_id = ?
+  `;
+
+  db.run(
+    sql,
+    [
+      course_name,
+      year,
+      semester,
+      section,
+      student_count || 0,
+      academic_year,
+      section_format,
+      id,
+    ],
+    function (err) {
+      if (err) {
+        console.error("Error updating section:", err.message);
+        return res.status(500).json({
+          success: false,
+          message: "Database error",
+          error: err.message,
+        });
+      }
+      if (this.changes === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Section not found" });
+      }
+      res.json({ success: true, message: "Section updated successfully" });
+    }
+  );
+});
+
+// DELETE Section (No vue code yet)
+app.delete("/sections/:id", (req, res) => {
+  const id = req.params.id;
+
+  db.run("DELETE FROM Sections WHERE section_id = ?", [id], function (err) {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+
+    res.json({ success: true, message: "Section deleted successfully" });
+  });
+});
+
+// UPDATE ALL Academic year and Semester of sections (Move Up)
+app.post("/sections/update-semester", (req, res) => {
+  const { academic_year, semester, new_academic_year, new_semester } = req.body;
+  const clean_academic_year = academic_year.replace(/–/g, '-'); 
+
+  const sql = `
+    UPDATE Sections
+    SET academic_year = ?, semester = ?
+    WHERE academic_year = ? AND semester = ?
+  `;
+
+  db.run(
+    sql,
+    [new_academic_year, new_semester, clean_academic_year, semester],
+    function (err) {
+      if (err) {
+        console.error("Error updating sections for move up:", err.message);
+        // Add a failure response for the client to catch
+        return res.status(500).json({ success: false, message: "Database update error" });
+      }
+
+      if (this.changes === 0) {
+        console.log(`No sections found to update for A.Y. ${clean_academic_year} Semester ${semester}`);
+      } else {
+        console.log(`Successfully moved up ${this.changes} sections.`);
+      }
+
+      // Send a success response
+      res.json({ success: true, changes: this.changes, message: "Sections moved up successfully" });
+    }
+  );
+});
+
+// UPDATE Individual sections and section_format.
+app.put("/sections/advance/:id", (req, res) => {
+  const { id } = req.params;
+  const { new_academic_year, new_semester, new_year, new_section_format } = req.body; // ⬅️ NEW: Catch the format
+
+  if (!new_academic_year || !new_semester || !new_year || !new_section_format) {
+    return res.status(400).json({
+      success: false,
+      message: "Missing required fields for section advance",
+    });
+  }
+
+  const sql = `
+    UPDATE Sections 
+    SET academic_year = ?, semester = ?, year = ?, section_format = ? 
+    WHERE section_id = ?
+  `;
+
+  db.run(
+    sql,
+    [new_academic_year, new_semester, new_year, new_section_format, id], // ⬅️ NEW: Pass the format to SQL
+    function (err) {
+      if (err) {
+        console.error(`Error advancing section ${id}:`, err.message);
+        return res.status(500).json({
+          success: false,
+          message: "Database error during section advance",
+          error: err.message,
+        });
+      }
+      if (this.changes === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "Section not found for update" });
+      }
+      res.json({ success: true, message: `Section ${id} advanced successfully` });
+    }
+  );
+});
+
+/*////////////////////////////////////////////////////////////////////////
+/////////////////////////  SECTIONS ARCHIVED  ////////////////////////////
+////////////////////////////////////////////////////////////////////////*/ 
+// ADD Section archived
+app.post("/sections/archive-sections", (req, res) => {
+  const { academic_year, semester } = req.body;
+  
+  const clean_academic_year = academic_year.replace(/–/g, '-');
+
+  const insertSql = `
+    INSERT INTO SectionsArchived (course_name, year, semester, section, student_count, academic_year, section_format)
+    SELECT course_name, year, semester, section, student_count, academic_year, section_format
+    FROM Sections
+    WHERE academic_year = ? AND semester = ?
+  `;
+
+  db.run(insertSql, [clean_academic_year, semester], function (err) {
+    if (err) {
+      console.error("Error archiving sections:", err);
+      return res.status(500).json({ error: "Failed to archive sections" });
+    }
+    res.json({
+      message: "Sections archived successfully (without deletion)",
+    });
+  });
+});
+
+// READ all Sections Archived
+app.get("/sections-archived", (req, res) => {
+  db.all("SELECT * FROM SectionsArchived", [], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(rows);
+  });
+});
+
+// DELETE Archived Sections by group
+app.delete("/sections-archived/:academic_year/:semester", (req, res) => {
+  const { academic_year, semester } = req.params;
+
+  const sql = `
+    DELETE FROM SectionsArchived 
+    WHERE academic_year = ? AND semester = ?
+  `;
+
+  db.run(sql, [academic_year, semester], function (err) {
+    if (err) {
+      console.error("Error deleting archived sections:", err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+
+    // Check if any rows were actually deleted
+    if (this.changes === 0) {
+      return res.json({ success: false, message: "No archived sections found for the specified criteria." });
+    }
+
+    res.json({ success: true, message: "Archived sections deleted successfully" });
+  });
+});
+
+/*////////////////////////////////////////////////////////////////////////
 /////////////////////////  DEPARTMENT  ///////////////////////////////////
 ////////////////////////////////////////////////////////////////////////*/ 
 // CREATE Department
@@ -575,18 +917,35 @@ app.post("/add-course", (req, res) => {
 
 // READ all course
 app.get("/courses", (req, res) => {
-  db.all("SELECT * FROM Courses", [], (err, rows) => {
+  const sql = `
+    SELECT 
+      c.course_id,
+      c.course_name,
+      c.course_code,
+      c.course_image,
+      COUNT(cs.subject_id) AS total_subjects,
+      COALESCE(SUM(s.units), 0) AS total_units
+    FROM Courses c
+    LEFT JOIN CourseSubjects cs ON c.course_id = cs.course_id
+    LEFT JOIN Subjects s ON cs.subject_id = s.subject_id
+    GROUP BY c.course_id
+    ORDER BY c.course_id;
+  `;
+
+  db.all(sql, [], (err, rows) => {
     if (err) {
+      console.error("Error fetching courses:", err.message);
       return res.status(500).json({ error: err.message });
     }
-    res.json(rows); // rows include course_id
+    res.json(rows);
   });
 });
+
 
 // UPDATE Course
 app.put("/update-course/:id", (req, res) => {
   const { id } = req.params;
-  const { course_image, course_name, course_code } = req.body;
+  const { department_id, course_name, course_code } = req.body;
 
   if (!course_name || !course_code) {
     return res.status(400).json({ success: false, message: "Missing required fields" });
@@ -623,6 +982,125 @@ app.delete("/courses/:id", (req, res) => {
   });
 });
 
+// UPDATE Course department only
+app.put("/courses/update-department/:id", (req, res) => {
+    const { id } = req.params;
+    const { department_id } = req.body;
+
+    const sql = `
+        UPDATE Courses
+        SET department_id = ?
+        WHERE course_id = ?
+    `;
+
+    db.run(sql, [department_id, id], function (err) {
+        if (err) {
+            console.error("Error updating course:", err.message);
+            return res.status(500).json({ success: false, message: "Database error", error: err.message });
+        }
+
+        if (this.changes === 0) {
+            return res.status(404).json({ success: false, message: "Course not found" });
+        }
+
+        res.json({ success: true, message: "Course department updated successfully" });
+    });
+});
+
+// CLEAR Courses department_id (set to NULL) for a given department
+app.put("/courses/clear-department/:departmentId", (req, res) => {
+    const { departmentId } = req.params;
+
+    const sql = `
+        UPDATE Courses
+        SET department_id = NULL
+        WHERE department_id = ?
+    `;
+
+    db.run(sql, [departmentId], function (err) {
+        if (err) {
+            console.error("Error clearing courses for department:", err.message);
+            return res.status(500).json({ success: false, message: "Database error during course unassignment.", error: err.message });
+        }
+
+        res.json({ success: true, message: `${this.changes} courses unassigned successfully.` });
+    });
+});
+
+/*////////////////////////////////////////////////////////////////////////
+/////////////////////////  COURSE SUBJECTS  ///////////////////////////////////
+////////////////////////////////////////////////////////////////////////*/ 
+// Insert Course Subjects
+app.post("/add-course-subject", (req, res) => {
+    const { course_id, subject_id, year, semester } = req.body;
+
+    console.log(req.body);
+
+
+    if (!course_id || !subject_id || !year || !semester) {
+        return res.status(400).json({ success: false, message: "Missing required fields (course, subject, year, or semester)." });
+    }
+
+    const sql = `
+        INSERT INTO CourseSubjects (course_id, subject_id, year, semester)
+        VALUES (?, ?, ?, ?)
+    `;
+
+    db.run(sql, [course_id, subject_id, year, semester], (err) => {
+        if (err) return res.status(500).json({ success: false, message: err.message });
+        res.json({ success: true, message: "Subject added successfully!" });
+    });
+});
+
+// API route to get all subjects for a specific course
+app.get("/courses/:id/subjects", (req, res) => {
+  const courseId = req.params.id;
+
+  const sql = `
+    SELECT
+      cs.subject_id,
+      s.subject_name,
+      s.subject_code,
+      cs.year,
+      cs.semester
+    FROM CourseSubjects cs
+    JOIN Subjects s ON cs.subject_id = s.subject_id
+    WHERE cs.course_id = ?
+    ORDER BY
+      CAST(cs.year AS INTEGER),
+      CAST(cs.semester AS INTEGER)
+  `;
+
+  db.all(sql, [courseId], (err, rows) => {
+    if (err) {
+      console.error("Error fetching grouped subjects:", err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+    res.json(rows);
+  });
+});
+
+// API route to remove a subject from a course (delete from the junction table)
+app.delete("/remove-course-subject", (req, res) => {
+    const { course_id, subject_id } = req.body;
+
+    if (!course_id || !subject_id) {
+        return res.status(400).json({ success: false, message: "Missing course_id or subject_id." });
+    }
+
+    const sql = `DELETE FROM CourseSubjects WHERE course_id = ? AND subject_id = ?`;
+    
+    db.run(sql, [course_id, subject_id], function(err) {
+        if (err) {
+            return res.status(500).json({ success: false, message: "Database error: " + err.message });
+        }
+        if (this.changes > 0) {
+            res.json({ success: true, message: `Subject ID ${subject_id} removed from Course ID ${course_id}.` });
+        } else {
+            res.status(404).json({ success: false, message: "Subject assignment not found." });
+        }
+    });
+});
 /*////////////////////////////////////////////////////////////////////////
 /////////////////////////  SUBJECTS  //////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////*/ 
@@ -754,4 +1232,9 @@ app.delete("/rooms/:id", (req, res) => {
     }
     res.json({ message: "Room deleted successfully" });
   });
+});
+
+// Start server
+app.listen(3000, () => {
+  console.log("Backend running at http://localhost:3000");
 });

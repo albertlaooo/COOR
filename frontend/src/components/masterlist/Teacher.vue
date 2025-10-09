@@ -250,13 +250,13 @@
 
     /////////////////////////////// TEACHER MODAL ////////////////////////////
     // For FUNCTION
-    const teacherTitle = ref()
-    const teacherButton = ref()
     const teacherHandler = ref()
     const selectedTeacher = ref(null)
 
     // For UI
     const showErrorInput = ref(false)
+    const teacherTitle = ref()
+    const teacherButton = ref()
     const isVisibleTeacherModal = ref(false)
     const departmentInputFocused = ref(false)
     const subjectInputFocused = ref(false)
@@ -320,7 +320,6 @@
                     console.error("Error:", error);
                     console.log("Failed to add teacher.");
                 }
-                alert("Add teacher Successfully!");
                 isVisibleTeacherModal.value = !isVisibleTeacherModal.value;
                 resetInputs();
             }
@@ -369,7 +368,6 @@
                     console.log(resAvail.data.message);
 
                 console.log(res.data.message);
-                alert("Teacher updated successfully!");
                 
                 fetchTeachers();
                 selectedTeacher.value = null;
@@ -518,7 +516,6 @@
         try {
             await axios.delete(`http://localhost:3000/teachers/${id}`)
             teachersDB.value = teachersDB.value.filter(t => t.teacher_id !== id)
-            alert("Deleted Successfully.")
             fetchTeachers()
         } catch (err) {
             console.error("Error deleting teacher:", err)
@@ -624,8 +621,8 @@
 
                          <!-- Render teacher rows if available -->
                         <tr v-for="item in filteredTeachers" :key="item.id">
-                        <td>{{ item.faculty_id }}</td>
-                        <td>{{ item.first_name + ', ' + item.last_name }}</td>
+                        <td :title="item.faculty_id">{{ item.faculty_id }}</td>
+                        <td :title="item.first_name + ', ' + item.last_name">{{ item.first_name + ', ' + item.last_name }}</td>
                         <td :title="item.departments.replaceAll(/,\s*/g, '\n')">{{ item.departments }}</td>
                         <td :title="item.subjects.replaceAll(/,\s*/g, '\n')">{{ item.subjects }}</td>
                         <td :title="item.availability.replaceAll(/,\s*/g, '\n')">{{ item.availability }}</td>
@@ -677,7 +674,7 @@
                                     style="position: absolute; display: flex; flex-direction: column; background-color: white;
                                             width: 100%;  padding-top: 6px; padding-bottom: 6px; border-radius: 6px; border: 1px solid var(--color-border);
                                             margin-top: 6px; box-sizing: border-box;
-                                            max-height: 200px; overflow-y: auto;"> 
+                                            max-height: 200px; overflow-y: auto; z-index: 1;"> 
 
                                     <div v-for="(dep, index) in filteredDepartments" 
                                         :key="dep.department_id"

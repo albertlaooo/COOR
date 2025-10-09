@@ -171,7 +171,6 @@
                 console.error("Error:", error);
                 console.log("Failed to add subject.");
             }
-            alert("Add subject Successfully!");
 
             fetchSubjects()
             setTimeout(() => {
@@ -191,7 +190,6 @@
                 });
 
             console.log(res.data.message);
-            alert("Subject updated successfully!");
             
             fetchSubjects();
             selectedSubject.value = null;
@@ -215,7 +213,6 @@
         try {
             await axios.delete(`http://localhost:3000/subjects/${id}`)
             items.value = items.value.filter(s => s.subject_code !== id)
-            alert("Deleted Successfully.")
             fetchSubjects()
         } catch (err) {
             console.error("Error deleting subject:", err)

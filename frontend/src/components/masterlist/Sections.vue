@@ -1,51 +1,353 @@
 <script setup>
     import { useRouter } from 'vue-router'
-    import { ref } from "vue"
+    import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue"
+    import axios from "axios";
     const router = useRouter()
-
-    const isVisibleMoveUp = ref(false)
-    const isVisibleAddSection = ref(false)
-    const passwordConfirmation = ref("")
 
     function backBtn() {
         router.push(`/main/masterlist`)
     }
 
+    const isVisibleMoveUpModal = ref(false)
+    const isVisibleAddSection = ref(false)
+    const passwordConfirmation = ref("")
+    const selectedGroupKey = ref("")
+
+    const searchQueryActive = ref('')
+    const searchQueryArchived = ref('')
+
+
+    /////////////////////////////// FETCH SECTIONS ////////////////////////////
+    const sections = ref([])
+
+    const fetchSections = async () => {
+    try {
+        const res = await axios.get("http://localhost:3000/sections")
+        sections.value = res.data
+    } catch (err) {
+        console.error("Error fetching sections:", err)
+    }
+    }
+
+    // Group sections by "A.Y. YEAR – Semester"
+    const groupedSections = computed(() => {
+    const groups = {}
+    const semesterMap = {
+        1: "1st Semester",
+        2: "2nd Semester"
+    }
+
+    sections.value.forEach((sec) => {
+        const semesterText = semesterMap[sec.semester] || sec.semester
+        const key = `A.Y. ${sec.academic_year} – ${semesterText}`
+
+        if (!groups[key]) {
+        groups[key] = []
+        }
+        groups[key].push(sec)
+    })
+
+    return groups
+    })
+
+    /////////////////////////////// FETCH ARCHIVED SECTIONS ////////////////////////////
+    const archivedSections = ref([])
+
+    const fetchArchivedSections = async () => {
+    try {
+        const res = await axios.get("http://localhost:3000/sections-archived")
+        archivedSections.value = res.data
+    } catch (err) {
+        console.error("Error fetching archived sections:", err)
+    }
+    }
+
+    // Group archived sections by "A.Y. YEAR – Semester"
+    const groupedArchivedSections = computed(() => {
+    const groups = {}
+    const semesterMap = {
+        1: "1st Semester",
+        2: "2nd Semester"
+    }
+
+    archivedSections.value.forEach((sec) => {
+        const semesterText = semesterMap[sec.semester] || sec.semester
+        const key = `A.Y. ${sec.academic_year} – ${semesterText}`
+
+        if (!groups[key]) {
+        groups[key] = []
+        }
+        groups[key].push(sec)
+    })
+
+    return groups
+    })
+
+    onMounted(() => {
+        fetchSections()
+        fetchArchivedSections()
+    })
+
+    async function deleteArchivedSection(key) {
+    if (!confirm(`Are you sure you want to delete ${key}?`)) return;
+
+        const regex = /A\.Y\. (.*?) – (.*)/;
+        const match = key.match(regex);
+
+        if (!match) {
+            alert("Invalid group key format.");
+            return;
+        }
+
+        const academic_year = match[1];
+        const semesterText = match[2];
+        const semester = semesterText.includes("1st") ? 1 : 2;
+
+        try {
+            const res = await axios.delete(
+            `http://localhost:3000/sections-archived/${academic_year}/${semester}`
+            );
+
+            if (res.data.success) {
+            alert("Archived sections deleted successfully.");
+            await fetchArchivedSections();
+            } else {
+            alert("Failed to delete archived sections.");
+            }
+        } catch (err) {
+            console.error("Error deleting archived sections:", err);
+            alert("An error occurred while deleting archived sections.");
+        }
+    }
+
+    /////////////////////////////// FETCH COURSES ////////////////////////////
+    const coursesDB = ref([])
+    const fetchCourses = async () => {
+        try {
+            const res = await axios.get("http://localhost:3000/courses");
+
+            if (res.data && Array.isArray(res.data)) {
+
+            // Clear first para walang duplicate
+            coursesDB.value.length = 0;
+
+            // Push each item
+            res.data.forEach(crse => {
+                coursesDB.value.push({
+                course_id: crse.course_id,
+                course_name: crse.course_name,
+                course_code: crse.course_code
+                });
+            });
+            }
+        } catch (err) {
+            console.error("Error fetching courses:", err);
+        }
+    }
+
+    onMounted(fetchCourses);
+
     const activeTab = ref("active") // default active
     const moveUpConfirmation = ref("note") // default note
     
-    /////////////////////////////// Move Up Modal ////////////////////////////
+    /////////////////////////////// MOVE UP MODAL ////////////////////////////
 
     function cancelMoveUpBtn(){
-        isVisibleMoveUp.value = !isVisibleMoveUp.value;
+        isVisibleMoveUpModal.value = !isVisibleMoveUpModal.value;
         moveUpConfirmation.value = 'note'
     }
 
-    function moveUpBtn(id){
-        if (passwordConfirmation.value === 'admin1234'){
-            isVisibleMoveUp.value = !isVisibleMoveUp.value;
-            moveUpConfirmation.value = 'note'
-        }
+    function toggleMoveUpModal(groupKey){
+        selectedGroupKey.value = groupKey
+        isVisibleMoveUpModal.value = !isVisibleMoveUpModal.value;
+    }
 
-        else{
-            alert("wrong password!")
+    // Helper to recalculate section_format after year/semester change
+    function recalculateSectionFormat(section, newYear, newSemester) {
+        // 1Find the course code for the section's course_name
+        const selectedCourse = coursesDB.value.find(
+            crse => crse.course_name.toLowerCase() === section.course_name.toLowerCase().trim()
+        )
+
+        const courseCode = selectedCourse?.course_code || ''
+
+        // Prepare new section format parts
+        const yearPart = newYear ? ` ${newYear}` : ''
+        const semesterPart = newSemester ? `-${newSemester}` : ''
+        const sectionPart = section.section ? section.section : '' // Use the existing section letter
+
+        // Combine all parts (e.g., BSCS 2-1A)
+        return `${courseCode}${yearPart}${semesterPart}${sectionPart}`.trim()
+    }
+
+    async function moveUpBtn() {
+        if (passwordConfirmation.value === 'admin1234') {
+            // Regex: A.Y. (YEAR-YEAR) – (SEMESTER TEXT)
+            const regex = /^A\.Y\. (\d{4}[–-]\d{4}) – (.*)$/;
+            const match = selectedGroupKey.value.match(regex);
+
+            if (!match) {
+                alert("Invalid group key format. Expected: A.Y. 2024–2025 – 1st Semester");
+                return;
+            }
+
+            // Extract original parts and standardize academic year
+            const currentAcademicYear = match[1].replace(/–/g, '-');
+            const [startYearStr, endYearStr] = currentAcademicYear.split('-');
+            const startYear = parseInt(startYearStr);
+            const endYear = parseInt(endYearStr);
+                
+            const semesterText = match[2].trim();
+            const semester = semesterText.includes("1st") ? 1 : 2;
+
+            // ⚠️ Extract the current sections to process the 'year' field
+            const sectionsToMove = sections.value.filter(
+                sec => sec.academic_year.replace(/–/g, '-') === currentAcademicYear && sec.semester === semester
+            );
+
+            if (sectionsToMove.length === 0) {
+                alert("No active sections found for this Academic Year and Semester to move up.");
+                isVisibleMoveUpModal.value = false;
+                moveUpConfirmation.value = 'note';
+                return;
+            }
+
+            try {
+                // 1. Archive ALL sections for the current A.Y. and Semester
+                await axios.post("http://localhost:3000/sections/archive-sections", {
+                    academic_year: currentAcademicYear,
+                    semester,
+                });
+
+                // 2. Determine the new status for each section and send individual updates
+
+                for (const section of sectionsToMove) {
+                    let newSemester = section.semester;
+                    let newAcademicYear = currentAcademicYear;
+                    let newYear = section.year;
+                    let deleteAfterArchive = false;
+                    let newSectionFormat = section.section_format; // Default to current format
+
+                    if (section.semester === 1) {
+                        // Move from Sem 1 to Sem 2 (same A.Y., same year level)
+                        newSemester = 2;
+                        
+                    } else if (section.semester === 2) {
+                        // Move from Sem 2 to next Sem 1
+
+                        // Check for graduation (Year 4 completion)
+                        if (section.year >= 4) { // Assuming 4 is the max year
+                            deleteAfterArchive = true;
+                            
+                        } else {
+                            // Advance to next year level (e.g., Year 1 -> Year 2)
+                            newYear = section.year + 1;
+                            newSemester = 1;
+                            // Advance to next Academic Year
+                            newAcademicYear = `${startYear + 1}-${endYear + 1}`;
+                        }
+                    }
+                    
+                    // Recalculate section format only if it's NOT a graduating section
+                    if (!deleteAfterArchive) {
+                        newSectionFormat = recalculateSectionFormat(section, newYear, newSemester);
+                    }
+
+                    if (deleteAfterArchive) {
+                        // 2b. If it's a graduating section, delete it from the Sections table
+                        await axios.delete(`http://localhost:3000/sections/${section.section_id}`);
+                    } else {
+                        // 2c. Otherwise, update the section with new year/semester/academic_year/format
+                        await axios.put(`http://localhost:3000/sections/advance/${section.section_id}`, {
+                            new_academic_year: newAcademicYear,
+                            new_semester: newSemester,
+                            new_year: newYear,
+                            new_section_format: newSectionFormat, // ⬅️ NEW: Send the updated format
+                        });
+                    }
+                }
+
+                alert("Sections moved up successfully!");
+
+                await fetchSections();
+                await fetchArchivedSections();
+
+                isVisibleMoveUpModal.value = false;
+                moveUpConfirmation.value = 'note';
+
+            } catch (err) {
+                console.error("Error moving up sections:", err);
+                alert("Failed to move up sections. See console for details.");
+            }
+        } else {
+            alert("Wrong password!");
         }
     }
 
-    /////////////////////////////// Add Section Modal ////////////////////////////
 
+
+
+
+
+    /////////////////////////////// ADD SECTION MODAL ////////////////////////////
     // data value
-    const courseValue = ref('')
+    const course = ref('')
+    const year = ref('')
+    const semester = ref('')
+    const section = ref('')
     const academicYear = ref('')
     const studentsCount = ref(0)
+    const sectionFormat = ref('')
+    const sectionHandler = ref()
 
-    // course options
-    const courses = ref([
-    { value: 'bsit', label: 'BSIT' },
-    { value: 'bsba', label: 'BSBA' },
-    { value: 'bsa', label: 'BSA' },
-    { value: 'bse', label: 'BSE' }
-    ])
+    // UI
+    const sectionTitle = ref()
+    const sectionButton = ref()
+    const courseWrapper = ref(null)
+    const inputFocused = ref(false)
+    const showErrorInput = ref(false)
+
+    // Filter courses based on user input
+    const filteredCourses = computed(() => {
+        if (!course.value) {
+            // show all courses if input is blank
+            return coursesDB.value.map(crse => ({
+                course_id: crse.course_id,
+                course_name: crse.course_name,
+                course_code: crse.course_code  || ''
+            }))
+        }
+
+        // filter based on input if user types
+        return coursesDB.value
+            .filter(crse =>
+                crse.course_name.toLowerCase().includes(course.value.toLowerCase())
+            )
+            .map(crse => ({
+                course_id: crse.course_id,
+                course_name: crse.course_name
+            }))
+    })
+
+    function selectCourse(crse){
+        course.value = crse.course_name
+        inputFocused.value = false
+    }
+
+    // Close dropdown when clicked outside
+    function handleClickOutside(event) {
+        if (courseWrapper.value && !courseWrapper.value.contains(event.target)) {
+            inputFocused.value = false
+        }
+    }
+
+    onMounted(() => {
+        document.addEventListener('mousedown', handleClickOutside)
+    })
+
+    onBeforeUnmount(() => {
+        document.removeEventListener('mousedown', handleClickOutside)
+    })
 
     function notListed() {
         router.push(`/main/masterlist/courses`);
@@ -54,12 +356,9 @@
     // academic year options
     const currentYear = new Date().getFullYear()
 
-    // academic year length
-    const range = 5 
-
     const academicYears = ref(
-    Array.from({ length: range }, (_, i) => {
-        const start = currentYear + i
+    Array.from({ length: 2 }, (_, i) => {
+        const start = currentYear - 1 + i
         const end = start + 1
         return {
         value: `${start}-${end}`,
@@ -77,9 +376,113 @@
     studentsCount.value = value ? parseInt(value) : 0
     }
 
-    const toggleAddSection = () => {
-        isVisibleAddSection.value = !isVisibleAddSection.value        
+    const toggleSectionModal = (which) => {
+        isVisibleAddSection.value = !isVisibleAddSection.value
+
+        if(which === 'add'){
+            sectionTitle.value = 'Section Information'
+            sectionButton.value = 'Confirm'
+            sectionHandler.value = 'add'
+        }
+
+        else if(which === 'update'){
+            sectionTitle.value = 'Update Information'
+            sectionButton.value = 'Update'
+            sectionHandler.value = 'update'
+        }
+        
+        else if('cancel'){
+            resetInputs();
+            showErrorInput.value = false
+        }
     }
+
+    function resetInputs() {
+        setTimeout(() => {
+            course.value = ''
+            year.value = ''
+            semester.value = ''
+            section.value = ''
+            academicYear.value = ''
+            studentsCount.value = 0
+            sectionFormat.value = ''
+        }, 100);
+    }
+
+    // define courseExists
+    const courseExists = computed(() =>
+        coursesDB.value.some(
+            crse => crse.course_name.toLowerCase() === course.value.toLowerCase().trim()
+        )
+    )
+    const sectionConfirm = async () => {
+    
+        if(course.value !== '' &&
+            courseExists.value &&
+            year.value !== '' &&
+            semester.value !== '' &&
+            section.value !== '' &&
+            academicYear.value !== '' &&
+            studentsCount.value !== 0
+            ){
+            
+            if(sectionHandler.value == 'add') {
+                try {
+                    const res = await axios.post("http://localhost:3000/add-section", {
+                    course_name: course.value,
+                    year: year.value,
+                    semester: semester.value,
+                    section: section.value,
+                    academic_year: academicYear.value,
+                    student_count: studentsCount.value || 0,
+                    section_format: sectionFormat.value
+                    })
+
+                    if (res.data.success) {
+                    console.log("Section added successfully!") 
+                    console.log("success")
+
+                    } else {
+                    console.log(res.data.message || "Failed to add section.") 
+                    console.log("error")
+                    }
+                } catch (err) {
+                    console.error(err)
+                } 
+                fetchSections()
+                toggleSectionModal()
+            }
+
+            else if(sectionHandler.value == 'update') {
+                alert("updated")
+            }
+        }
+
+        else {
+            showErrorInput.value = false
+            setTimeout(() => { showErrorInput.value = true; }, 0);
+        }
+
+    }
+
+    // 👇 Watch for changes in course, year, semester, or section
+    watch([course, year, semester, section, coursesDB], () => {
+        // 1️⃣ Find the course in the database
+        const selectedCourse = coursesDB.value.find(
+            crse => crse.course_name.toLowerCase() === course.value.toLowerCase().trim()
+        )
+
+        // 2️⃣ Get course code if found, else empty
+        const courseCode = selectedCourse?.course_code || ''
+
+        // 3️⃣ Prepare section format parts
+        const yearPart = year.value ? ` ${year.value}` : ''
+        const semesterPart = semester.value ? `-${semester.value}` : ''
+        const sectionPart = section.value ? `${section.value}` : ''
+
+        // 4️⃣ Combine all parts (e.g. BSCS 1-1A)
+        sectionFormat.value = `${courseCode}${yearPart}${semesterPart}${sectionPart}`.trim()
+    }, { deep: true })
 
     </script>
 
@@ -150,33 +553,52 @@
                         <option value="">Sort by</option>
                     </select>
 
-                    <button @click="toggleAddSection" style="margin-left: auto; width: 200px;">+ Add Section</button>
+                    <button @click="toggleSectionModal('add')" style="margin-left: auto; width: 200px;">+ Add Section</button>
                 </div>
 
-                <div>
-                    <div style="display: flex; flex-direction: row; gap: 6px; align-items: center; margin-bottom: 10px;">
-                        <h3 style="line-height: 0;">A.Y. 2025–2026 – 1st Semester</h3>
-                        <svg @click="isVisibleMoveUp = !isVisibleMoveUp;" width="30" height="auto" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M23.636 4C26.046 4 28 5.954 28 8.364V23.636C28 24.7934 27.5402 25.9034 26.7218 26.7218C25.9034 27.5402 24.7934 28 23.636 28H8.364C7.79091 28 7.22343 27.8871 6.69397 27.6678C6.1645 27.4485 5.68342 27.127 5.27819 26.7218C4.45978 25.9034 4 24.7934 4 23.636V8.364C4 5.954 5.954 4 8.364 4H23.636ZM16.006 9.454H15.996L15.982 9.456H15.956L15.93 9.458H15.916L15.892 9.462H15.874L15.854 9.466L15.834 9.47L15.82 9.474L15.792 9.48C15.6494 9.51464 15.5188 9.5872 15.414 9.69L11.876 13.152C11.7999 13.2263 11.7394 13.3151 11.6981 13.4132C11.6567 13.5113 11.6355 13.6166 11.6355 13.723C11.6355 13.8294 11.6567 13.9347 11.6981 14.0328C11.7394 14.1309 11.7999 14.2197 11.876 14.294C12.0326 14.4449 12.2415 14.5293 12.459 14.5293C12.6765 14.5293 12.8854 14.4449 13.042 14.294L15.17 12.212V21.738C15.1732 21.9541 15.2615 22.1602 15.4158 22.3115C15.5701 22.4628 15.7779 22.5471 15.994 22.546C16.2105 22.5476 16.4188 22.4636 16.5735 22.3122C16.7282 22.1608 16.8168 21.9544 16.82 21.738V12.202L18.958 14.294C19.1146 14.4449 19.3235 14.5293 19.541 14.5293C19.7585 14.5293 19.9674 14.4449 20.124 14.294C20.1998 14.2197 20.2601 14.131 20.3012 14.0331C20.3423 13.9353 20.3635 13.8302 20.3635 13.724C20.3635 13.6178 20.3423 13.5127 20.3012 13.4149C20.2601 13.317 20.1998 13.2283 20.124 13.154L16.588 9.688C16.4324 9.53614 16.2234 9.4514 16.006 9.452V9.454Z" fill="#0785D4"/>
-                        </svg>
-                    </div>
+                <div style="display: flex; flex-direction: column; gap: 35px;">
+                    <!-- Loop through each A.Y. + Semester group -->
+                    <div
+                        v-for="(sections, groupKey) in groupedSections"
+                        :key="groupKey"
+                        >
+                        <!-- Header -->
+                        <div
+                            style="display: flex; flex-direction: row; gap: 6px; align-items: center; margin-bottom: 10px;"
+                        >
+                            <h3 style="line-height: 0;">{{ groupKey }}</h3>
 
-                    <div class="card-container">
-                        <div class="card">
-                            <p class="paragraph--black-bold">BSIT 4.1A </p>
-                            <p>Bachelor of Science in Information Technology</p>
-                            <p style="margin-top: 16px;">8 Students</p>
+                            <!-- Toggle visibility -->
+                            <svg
+                            @click="toggleMoveUpModal(groupKey)"
+                            width="30"
+                            height="100%"
+                            viewBox="0 0 32 32"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                            style="cursor: pointer;"
+                            >
+                            <path
+                                d="M23.636 4C26.046 4 28 5.954 28 8.364V23.636C28 24.7934 27.5402 25.9034 26.7218 26.7218C25.9034 27.5402 24.7934 28 23.636 28H8.364C7.79091 28 7.22343 27.8871 6.69397 27.6678C6.1645 27.4485 5.68342 27.127 5.27819 26.7218C4.45978 25.9034 4 24.7934 4 23.636V8.364C4 5.954 5.954 4 8.364 4H23.636ZM16.006 9.454H15.996L15.982 9.456H15.956L15.93 9.458H15.916L15.892 9.462H15.874L15.854 9.466L15.834 9.47L15.82 9.474L15.792 9.48C15.6494 9.51464 15.5188 9.5872 15.414 9.69L11.876 13.152C11.7999 13.2263 11.7394 13.3151 11.6981 13.4132C11.6567 13.5113 11.6355 13.6166 11.6355 13.723C11.6355 13.8294 11.6567 13.9347 11.6981 14.0328C11.7394 14.1309 11.7999 14.2197 11.876 14.294C12.0326 14.4449 12.2415 14.5293 12.459 14.5293C12.6765 14.5293 12.8854 14.4449 13.042 14.294L15.17 12.212V21.738C15.1732 21.9541 15.2615 22.1602 15.4158 22.3115C15.5701 22.4628 15.7779 22.5471 15.994 22.546C16.2105 22.5476 16.4188 22.4636 16.5735 22.3122C16.7282 22.1608 16.8168 21.9544 16.82 21.738V12.202L18.958 14.294C19.1146 14.4449 19.3235 14.5293 19.541 14.5293C19.7585 14.5293 19.9674 14.4449 20.124 14.294C20.1998 14.2197 20.2601 14.131 20.3012 14.0331C20.3423 13.9353 20.3635 13.8302 20.3635 13.724C20.3635 13.6178 20.3423 13.5127 20.3012 13.4149C20.2601 13.317 20.1998 13.2283 20.124 13.154L16.588 9.688C16.4324 9.53614 16.2234 9.4514 16.006 9.452V9.454Z"
+                                fill="#0785D4"
+                            />
+                            </svg>
                         </div>
 
-                        <div class="card">
-                            <p class="paragraph--black-bold">BSIT 4.1A </p>
-                            <p>Bachelor of Science in Information Technology</p>
-                            <p style="margin-top: 16px;">8 Students</p>
+                        <!-- Cards -->
+                        <div class="card-container">
+                            <div
+                            v-for="section in sections"
+                            :key="section.section_id"
+                            class="card"
+                            >
+                            <p class="paragraph--black-bold">{{ section.section_format }}</p>
+                            <p>{{ section.course_name }}</p>
+                            <p style="margin-top: 16px;">{{ section.student_count }} Students</p>
+                            </div>
                         </div>
-
                     </div>
                 </div>
-
             </div>
 
             <div style="display: flex; flex-direction: column; gap: 18px;" v-else-if="activeTab === 'archived'">
@@ -206,29 +628,22 @@
                     </select>
                 </div>
 
-                <div>
+                <div style="display: flex; flex-direction: column; gap: 35px;">
+                    <div v-for="(group, key) in groupedArchivedSections" :key="key">
                     <div style="display: flex; flex-direction: row; gap: 6px; align-items: center; margin-bottom: 10px;">
-                        <h3 style="line-height: 0;">A.Y. 2024–2025 – 2nd Semester</h3>
+                        <h3 style="line-height: 0;">{{ key }}</h3>
+
+                        <svg @click="deleteArchivedSection(key)" style="cursor: pointer;" width="22" height="100%" viewBox="0 0 30 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M11.1427 25.6427V11.4999C11.1427 11.313 11.0827 11.1587 10.9627 11.037C10.8427 10.9153 10.6884 10.8553 10.4998 10.857H9.21411C9.02726 10.857 8.87297 10.917 8.75126 11.037C8.62954 11.157 8.56954 11.3113 8.57126 11.4999V25.6427C8.57126 25.8296 8.63126 25.9839 8.75126 26.1056C8.87126 26.2273 9.02554 26.2873 9.21411 26.2856H10.4998C10.6867 26.2856 10.841 26.2256 10.9627 26.1056C11.0844 25.9856 11.1444 25.8313 11.1427 25.6427ZM16.2855 25.6427V11.4999C16.2855 11.313 16.2255 11.1587 16.1055 11.037C15.9855 10.9153 15.8313 10.8553 15.6427 10.857H14.357C14.1701 10.857 14.0158 10.917 13.8941 11.037C13.7724 11.157 13.7124 11.3113 13.7141 11.4999V25.6427C13.7141 25.8296 13.7741 25.9839 13.8941 26.1056C14.0141 26.2273 14.1684 26.2873 14.357 26.2856H15.6427C15.8295 26.2856 15.9838 26.2256 16.1055 26.1056C16.2273 25.9856 16.2873 25.8313 16.2855 25.6427ZM21.4284 25.6427V11.4999C21.4284 11.313 21.3684 11.1587 21.2484 11.037C21.1284 10.9153 20.9741 10.8553 20.7855 10.857H19.4998C19.313 10.857 19.1587 10.917 19.037 11.037C18.9153 11.157 18.8553 11.3113 18.857 11.4999V25.6427C18.857 25.8296 18.917 25.9839 19.037 26.1056C19.157 26.2273 19.3113 26.2873 19.4998 26.2856H20.7855C20.9724 26.2856 21.1267 26.2256 21.2484 26.1056C21.3701 25.9856 21.4301 25.8313 21.4284 25.6427ZM10.4998 5.71415H19.4998L18.5355 3.36386C18.4413 3.24386 18.3273 3.17015 18.1935 3.14272H11.8241C11.6904 3.17015 11.5764 3.24386 11.4821 3.36386L10.4998 5.71415ZM29.1427 6.357V7.64272C29.1427 7.82957 29.0827 7.98386 28.9627 8.10557C28.8427 8.22729 28.6884 8.28729 28.4998 8.28558H26.5713V27.3296C26.5713 28.4404 26.2567 29.4013 25.6275 30.2121C24.9984 31.023 24.2415 31.4284 23.357 31.4284H6.64268C5.75811 31.4284 5.00125 31.0367 4.37211 30.2533C3.74297 29.4699 3.4284 28.5227 3.4284 27.4119V8.28558H1.49983C1.31297 8.28558 1.15868 8.22557 1.03697 8.10557C0.915255 7.98557 0.855255 7.83129 0.856969 7.64272V6.357C0.856969 6.17015 0.916969 6.01586 1.03697 5.89415C1.15697 5.77243 1.31126 5.71243 1.49983 5.71415H7.70725L9.11383 2.35843C9.3144 1.863 9.67611 1.44129 10.199 1.09329C10.7218 0.745289 11.2507 0.571289 11.7855 0.571289H18.2141C18.749 0.571289 19.2778 0.745289 19.8007 1.09329C20.3235 1.44129 20.6853 1.863 20.8858 2.35843L22.2924 5.71415H28.4998C28.6867 5.71415 28.841 5.77415 28.9627 5.89415C29.0844 6.01415 29.1444 6.16843 29.1427 6.357Z" fill="#A83838"/>
+                        </svg>
                     </div>
-
                     <div class="card-container">
-                        <div class="card">
-                            <p class="paragraph--black-bold">BSCS 4.1A </p>
-                            <p>Bachelor of Science in Computer Science</p>
-                            <p style="margin-top: 16px;">8 Students</p>
+                        <div v-for="section in group" :key="section.section_id" class="card">
+                        <p class="paragraph--black-bold">{{ section.section_format }}</p>
+                        <p>{{ section.course_name }}</p>
+                        <p style="margin-top: 16px;">{{ section.student_count }} Students</p>
                         </div>
-
-                        <div class="card">
-                            <p class="paragraph--black-bold">BSCS 4.1A </p>
-                            <p>Bachelor of Science in Computer Science</p>
-                            <p style="margin-top: 16px;">8 Students</p>
-                        </div>
-
-                        <div class="card">
-                            <p class="paragraph--black-bold">BSCS 4.1A </p>
-                            <p>Bachelor of Science in Computer Science</p>
-                            <p style="margin-top: 16px;">8 Students</p>
-                        </div>
+                    </div>
                     </div>
                 </div>
             </div>
@@ -238,7 +653,7 @@
 
         <!-- Move Up / Archive Modal -->
         <transition name="fade" mode="out-in">
-            <div v-show="isVisibleMoveUp" class="modal" @click.self="cancelMoveUpBtn"> 
+            <div v-show="isVisibleMoveUpModal" class="modal" @click.self="cancelMoveUpBtn"> 
                 <div class="modal-content-archive">
 
                     <transition name="slide-left">
@@ -258,11 +673,7 @@
                                 <h2 style="line-height: 0;">Move Up</h2>
                             </div>
                             
-                            <div style="display: flex; flex-wrap: wrap; gap: 5px;">
-                                <p>Move</p>
-                                <p class="paragraph--black-bold">Academic Year 2025–2026 – 1st Semester? </p>
-                                <p>This action will also archive it.</p>
-                            </div>
+                            <p>Move <strong>{{ selectedGroupKey }}?</strong> This action will also archive it.</p>
 
                             <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto; margin-top: 4px;">
                                 <button @click="cancelMoveUpBtn" class="cancelBtn">Cancel</button>
@@ -293,44 +704,74 @@
             </div>
         </transition>
 
-        <!-- Add Teacher Modal -->
+        <!-- Add Section Modal -->
         <transition name="fade">
-            <div v-show="isVisibleAddSection" class="modal" @click.self="toggleAddSection">
+            <div v-show="isVisibleAddSection" class="modal" @click.self="toggleSectionModal('cancel')">
                <div class="modal-content-add-subject">
-                    <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">Add a new section</h2>
+                    <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">{{ sectionTitle }}</h2>
 
                     <div style="display: flex; flex-direction: column; width: 100%; gap: 14px;">
                         <!-- Courses -->
-                        <div>
+                        <div ref="courseWrapper">
                             <p class="paragraph--black-bold" style="line-height: 1.8;">Course</p>
                             <div style="display: flex; flex-direction: row; flex-wrap: nowrap; gap: 10px; align-items: center;">
-                                <select v-model="courseValue" style="padding: 6px; padding-left: 15px; width: 100%;">
-                                    <option disabled>-- Select a course --</option>
-                                    <option 
-                                        v-for="course in courses" 
-                                        :key="course.value" 
-                                        :value="course.value">
-                                        {{ course.label }}
-                                    </option>
-                                </select>
+                                <div style="position: relative; width: 100%;">
+                                    <input v-model="course" 
+                                            @focus="inputFocused = true" 
+                                            placeholder="Search here"
+                                            :class="{ 'error-input-border': showErrorInput && (course.trim() === '' || !courseExists) }"></input>
+
+                                    <!-- Dropdown suggestions -->
+                                    <div v-if="inputFocused && filteredCourses.length" 
+                                        style="position: absolute; display: flex; flex-direction: column; background-color: white;
+                                                width: 100%;  padding-top: 6px; padding-bottom: 6px; border-radius: 6px; border: 1px solid var(--color-border);
+                                                margin-top: 6px; box-sizing: border-box;
+                                                max-height: 200px; overflow-y: auto;"> 
+
+                                        <div v-for="(crse, index) in filteredCourses" 
+                                            :key="crse.course_id"
+                                            @click="selectCourse(crse)"
+                                            class="dropdown-item">
+                                            {{ crse.course_name }}
+                                        </div>
+                                    </div>
+                                </div>
                                 <p class="paragraph--gray" @click="notListed" style="font-weight: 600; color: #6799C8; white-space: nowrap; text-decoration: underline; text-underline-offset: 4px; cursor: pointer;">Not listed?</p>
                             </div>
                         </div>
 
                         <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto; column-gap: 25px; row-gap: 14px;">
                             <div>
-                                <p class="paragraph--black-bold" style="line-height: 1.8;">Section</p>
-                                <input v-model="section"></input>
+                                <p class="paragraph--black-bold" style="line-height: 1.8;">Year</p>
+                                <select v-model="year" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && year.trim() === '' }">
+                                    <option value="1">1st Year</option>
+                                    <option value="2">2nd Year</option>
+                                    <option value="3">3rd Year</option>
+                                    <option value="4">4th Year</option>
+                                </select>
                             </div>
 
                             <div>
-                                <p class="paragraph--black-bold" style="line-height: 1.8;">Students Count</p>
-                                <input :value="studentsCount" @input="handleStudentCountInput" inputmode="numeric" pattern="[0-9]*"></input>
+                                <p class="paragraph--black-bold" style="line-height: 1.8;">Semester</p>
+                                <select v-model="semester" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && semester.trim() === '' }">
+                                    <option value="1">1st Semester</option>
+                                    <option value="2">2nd Semester</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <p class="paragraph--black-bold" style="line-height: 1.8;">Section</p>
+                                <select v-model="section" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && section.trim() === '' }">
+                                    <option value="A">A</option>
+                                    <option value="B">B</option>
+                                    <option value="C">C</option>
+                                    <option value="D">B</option>
+                                </select>
                             </div>
 
                             <div>
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Academic Year</p>
-                                <select v-model="academicYear" style="width: 100%;">
+                                <select v-model="academicYear" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && academicYear.trim() === '' }">
                                     <option 
                                         v-for="academicYear in academicYears" 
                                         :key="academicYear.value" 
@@ -341,19 +782,22 @@
                             </div>
 
                             <div>
-                                <p class="paragraph--black-bold" style="line-height: 1.8;">Semester</p>
-                                <select v-model="semester" style="width: 100%;">
-                                    <option value="sem1">1st Semester</option>
-                                    <option value="sem2">2nd Semester</option>
-                                </select>
+                                <p class="paragraph--black-bold" style="line-height: 1.8;">Students Count</p>
+                                <input :value="studentsCount" @input="handleStudentCountInput" inputmode="numeric" pattern="[0-9]*" :class="{ 'error-input-border': showErrorInput && studentsCount === 0 }"></input>
                             </div>
+
+                            <div>
+                                <p class="paragraph--black-bold" style="line-height: 1.8;">Section Format</p>
+                                <input v-model="sectionFormat" readonly style="pointer-events: none; background-color: var(--color-lightgray);"></input>
+                            </div>
+
                         </div>
                         
                     </div>
 
                     <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
-                        <button @click="toggleAddSection" class="cancelBtn">Cancel</button>
-                        <button @click="sectionConfirm">Confirm</button>
+                        <button @click="toggleSectionModal('cancel')" class="cancelBtn">Cancel</button>
+                        <button @click="sectionConfirm">{{ sectionButton }}</button>
                     </div>
                </div>
             </div>
@@ -489,6 +933,20 @@
         box-shadow: -2px 0 8px rgba(0,0,0,0.2);
         border-radius: 6px;
         gap: 45px;
+    }
+
+    .dropdown-item {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        cursor: pointer;
+        border-radius: 4px;
+        color: black;
+    }
+
+    .dropdown-item:hover {
+        background: #eee;
     }
 
     /* Transition classes */

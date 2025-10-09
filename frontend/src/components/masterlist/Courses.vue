@@ -1,214 +1,392 @@
 <script setup>
-    import { ref, onMounted, computed } from "vue"
-    import { useRouter } from 'vue-router'
-    import axios from "axios";
+import { ref, onMounted, onBeforeUnmount, computed } from "vue"
+import { useRouter } from 'vue-router'
+import axios from "axios"
 
-    const router = useRouter()
+//#region 🧭 ROUTER
+const router = useRouter()
+//#endregion
 
-    // Data
-    const courses = ref([])
-    const courseImage = ref(0);
-    const courseName = ref('');
-    const courseCode = ref('');
+//#region 🗂️ DATA
+const courses = ref([])
+const courseImage = ref(0)
+const courseName = ref('')
+const courseCode = ref('')
+const addSubjects = ref('')
+const subjectsDB = ref([]) // raw subjects from DB
+const selectedSubjectData = ref()
+const year = ref('')
+const semester = ref('')
+//#endregion
 
-    // Selected Department
-    const selectedCourse = ref(null)
+//#region 🧠 STATE MANAGEMENT
+const fetchedSubjects = ref([]) // subjects per selected course
+const selectedCourse = ref(null)
+const inputFocused = ref(false)
+const subjectWrapper = ref(null)
+const showErrorInput = ref(false)
+//#endregion
 
-    // Images
-    import img0 from '@/assets/departments/0.webp'
-    import img1 from '@/assets/departments/1.webp'
-    import img2 from '@/assets/departments/2.webp'
-    import img3 from '@/assets/departments/3.webp'
+//#region 🖼️ IMAGES
+import img0 from '@/assets/departments/0.webp'
+import img1 from '@/assets/departments/1.webp'
+import img2 from '@/assets/departments/2.webp'
+import img3 from '@/assets/departments/3.webp'
 
-    // Map integers to images
-    const images = {
-    0: img0,
-    1: img1,
-    2: img2,
-    3: img3
-    }
+const images = { 0: img0, 1: img1, 2: img2, 3: img3 }
 
-    // Preload images programmatically
-    Object.values(images).forEach(src => {
+// Preload images
+Object.values(images).forEach(src => {
     const img = new Image()
     img.src = src
-    })
+})
+//#endregion
 
-    /////////////////////////////// FETCH DEPARTMENTS ////////////////////////////
-    const fetchCourses = async () => {
-        try {
-            const res = await axios.get("http://localhost:3000/courses");
-
-            courses.value = res.data.map(course => ({
-                id: course.course_id,
-                imgIndex: course.course_image,
-                img: images[course.course_image] || images[0],
-                name: course.course_name,
-                code: course.course_code,
-                
-                units: 0,
-                subjects: 0
-            }));
-        } catch (err) {
-            console.error("Error fetching courses:", err);
+//#region 📘 FETCH SUBJECTS
+const fetchSubjects = async () => {
+    try {
+        const res = await axios.get("http://localhost:3000/subjects")
+        if (res.data && Array.isArray(res.data)) {
+            subjectsDB.value.length = 0 // clear duplicates
+            res.data.forEach(subj => {
+                subjectsDB.value.push({
+                    subject_id: subj.subject_id,
+                    subject_name: subj.subject_name,
+                    subject_code: subj.subject_code
+                })
+            })
         }
+    } catch (err) {
+        console.error("Error fetching subjects:", err)
+    }
+}
+onMounted(fetchSubjects)
+
+async function fetchSubjectsOnCourse() {
+    if (!selectedCourse.value || !selectedCourse.value.id) {
+        fetchedSubjects.value = []
+        return
     }
 
-    onMounted(fetchCourses);
-
-    /////////////////////////////// DELETE DEPARTMENTS ////////////////////////////
-    async function deleteCourse() {
-        if (!selectedCourse.value || !selectedCourse.value.id) {
-            return;
-        }
-
-        if (!confirm(`Are you sure you want to delete?`)) return;
-        try {
-            await axios.delete(`http://localhost:3000/courses/${selectedCourse.value.id}`);
-            alert("Course deleted successfully!");
-
-            // refresh the list
-            fetchCourses();
-
-            // reset selection
-            selectedCourse.value = null;
-        } catch (err) {
-            console.error("Error deleting course:", err);
-            alert("Failed to delete course.");
-        }
-    }
-
-
-    /////////////////////////////// NAVIGATION FUNCTION ////////////////////////////
-    function backBtn() {
-        router.push(`/main/masterlist`)
-    }
-
-    function navBtn(which) {
-        router.push(`/main/masterlist/${which}`)
-    }
-
-    function courseClick(course) {
-        if (selectedCourse.value && selectedCourse.value.id === course.id) {
-            selectedCourse.value = null;
+    try {
+        const res = await axios.get(`http://localhost:3000/courses/${selectedCourse.value.id}/subjects`)
+        if (res.data && Array.isArray(res.data)) {
+            fetchedSubjects.value = res.data.map(subj => ({
+                subject_id: subj.subject_id,
+                subject_name: subj.subject_name,
+                subject_code: subj.subject_code,
+                year: subj.year,
+                semester: subj.semester
+            }))
+            console.log(fetchedSubjects)
         } else {
-            selectedCourse.value = course;
+            fetchedSubjects.value = []
         }
+    } catch (err) {
+        console.error(`Error fetching subjects for course ${selectedCourse.value.id}:`, err)
+        fetchedSubjects.value = []
+    }
+}
+//#endregion
+
+//#region 📚 FETCH COURSES
+const fetchCourses = async () => {
+  try {
+    const res = await axios.get("http://localhost:3000/courses");
+    courses.value = res.data.map(course => ({
+      id: course.course_id,
+      imgIndex: course.course_image,
+      img: images[course.course_image] || images[0],
+      name: course.course_name,
+      code: course.course_code,
+      units: course.total_units || 0,
+      subjects: course.total_subjects || 0
+    }));
+  } catch (err) {
+    console.error("Error fetching courses:", err);
+  }
+};
+onMounted(fetchCourses)
+//#endregion
+
+//#region ❌ DELETE COURSE
+async function deleteCourse() {
+    if (!selectedCourse.value || !selectedCourse.value.id) return
+    if (!confirm(`Are you sure you want to delete?`)) return
+
+    try {
+        await axios.delete(`http://localhost:3000/courses/${selectedCourse.value.id}`)
+        fetchCourses()
+        selectedCourse.value = null
+    } catch (err) {
+        console.error("Error deleting course:", err)
+        alert("Failed to delete course.")
+    }
+}
+//#endregion
+
+//#region 🔍 SEARCH / FILTER SUBJECTS
+const filteredSubjects = computed(() => {
+    let results = []
+
+    if (!addSubjects.value) {
+        // show all if input blank
+        results = subjectsDB.value.map(subj => ({
+            subject_id: subj.subject_id,
+            subject_name: subj.subject_name,
+            subject_code: subj.subject_code || ''
+        }))
+
+        // sortation: unassigned first, assigned below, alphabetical inside group
+        results.sort((a, b) => {
+            const aAssigned = fetchedSubjects.value.some(fs => fs.subject_id === a.subject_id)
+            const bAssigned = fetchedSubjects.value.some(fs => fs.subject_id === b.subject_id)
+            if (!aAssigned && bAssigned) return -1
+            if (aAssigned && !bAssigned) return 1
+            return a.subject_name.localeCompare(b.subject_name)
+        })
+    } else {
+        // filter if user types
+        results = subjectsDB.value
+            .filter(subj =>
+                subj.subject_name.toLowerCase().includes(addSubjects.value.toLowerCase())
+            )
+            .map(subj => ({
+                subject_id: subj.subject_id,
+                subject_name: subj.subject_name
+            }))
     }
 
-    const deleteIconColor = computed(() => {
-        return selectedCourse.value ? '#A83838' : '#CCCCCC'; // #CCCCCC for gray
+    return results
+})
+//#endregion
+
+//#region GROUP SUBJECTS BY YEAR AND SEMESTER
+const groupedSubjects = computed(() => {
+    const groups = {};
+
+    // ✅ Converts any number into ordinal (1st, 2nd, 3rd, 4th, 5th, etc.)
+    const getOrdinal = (num) => {
+        const suffixes = ["th", "st", "nd", "rd"];
+        const v = num % 100;
+        return num + (suffixes[(v - 20) % 10] || suffixes[v] || suffixes[0]);
+    };
+
+    fetchedSubjects.value.forEach(subj => {
+        const year = subj.year || 1;
+        const semester = subj.semester || 1;
+
+        const key = `• ${getOrdinal(year)} Year - ${getOrdinal(semester)} Semester`;
+
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(subj);
     });
 
-    const updateIconColor = computed(() => {
-        return selectedCourse.value ? 'var(--color-primary)' : '#CCCCCC'; // #CCCCCC for gray
-    });
+    return groups;
+});
+//#endregion
 
-    /////////////////////////////// Course Modal ////////////////////////////
-    const courseTitle = ref('');
-    const courseButton = ref('');
-    const courseHandler = ref('');
-    const isVisibleCourseModal = ref(false)
+//#region 🧩 SUBJECT ASSIGNMENT
+async function selectSubject(subj) {
+    selectedSubjectData.value = subjectsDB.value.find(s => s.subject_id === subj.subject_id)
+    toggleSubjectAssignModal()
+    inputFocused.value = false
+}
 
-    const courseConfirm = async () => {
+async function subjectAssignConfirm() {
+    if (!selectedSubjectData) {
+        alert("Error: Subject data not found.")
+        addSubjects.value = ''
+        return
+    }
 
-        if(courseHandler.value === 'add'){
-            try {
-                const res = await axios.post("http://localhost:3000/add-course", {
-                    course_image: courseImage.value,
-                    course_name: courseName.value,
-                    course_code: courseCode.value.toUpperCase()
-                });
-                console.log(res.data.message);
-                alert("Add course Successfully!");
-            } catch (error) {
-                console.error("Error:", error);
-                alert("Failed to add course.");
+    if (year.value !== '' && semester.value !== '') {
+        showErrorInput.value = false
+
+        const plainSubject = {
+            course_id: selectedCourse.value.course_id || selectedCourse.value.id,
+            subject_id: selectedSubjectData.value.subject_id,
+            year: year.value,
+            semester: semester.value
+        }
+
+        console.log("Sending to backend:", plainSubject)
+
+        try {
+            const res = await axios.post("http://localhost:3000/add-course-subject", plainSubject)
+            if (res.data.success) fetchSubjectsOnCourse()
+            else alert(res.data.message || "Failed to assign subject.")
+        } catch (err) {
+            console.error(err)
+            alert("An error occurred while assigning the subject.")
+        }
+
+        // reset inputs
+        addSubjects.value = ''
+        inputFocused.value = false
+        toggleSubjectAssignModal()
+        year.value = ''
+        semester.value = ''
+    } else {
+        showErrorInput.value = false
+        setTimeout(() => { showErrorInput.value = true }, 0)
+    }
+}
+
+async function removeSubject(subjectId) {
+    if (!selectedCourse.value || !selectedCourse.value.id) {
+        alert("No course selected.")
+        return
+    }
+
+    try {
+        const res = await axios.delete(`http://localhost:3000/remove-course-subject`, {
+            data: {
+                course_id: selectedCourse.value.id,
+                subject_id: subjectId
             }
-            fetchCourses();
-            toggleCourseModal('cancel');
-            
-            // Reset Inputs
-            courseImage.value = 0;
-            courseName.value = '';
-            courseCode.value = '';
-            }
+        })
 
-        else if(courseHandler.value === 'update'){
-            try {
+        if (res.data.success) {
+            console.log(res.data.message)
+            fetchSubjectsOnCourse()
+        } else {
+            alert("Failed to remove subject: " + res.data.message)
+        }
+    } catch (error) {
+        if (error.response?.data) {
+            alert(error.response.data.message)
+        } else {
+            alert("An unexpected error occurred while removing the subject.")
+            console.error(error)
+        }
+    }
+}
+//#endregion
+
+//#region 🖱️ UI HANDLERS
+function handleClickOutside(event) {
+    if (subjectWrapper.value && !subjectWrapper.value.contains(event.target)) {
+        inputFocused.value = false
+    }
+}
+onMounted(() => document.addEventListener('mousedown', handleClickOutside))
+onBeforeUnmount(() => document.removeEventListener('mousedown', handleClickOutside))
+//#endregion
+
+//#region 🧭 NAVIGATION
+function backBtn() { router.push(`/main/masterlist`) }
+function navBtn(which) { router.push(`/main/masterlist/${which}`) }
+
+function courseClick(course) {
+    if (selectedCourse.value && selectedCourse.value.id === course.id) {
+        selectedCourse.value = null
+    } else {
+        selectedCourse.value = course
+        fetchSubjectsOnCourse()
+    }
+}
+
+const deleteIconColor = computed(() => selectedCourse.value ? '#A83838' : '#CCCCCC')
+const updateIconColor = computed(() => selectedCourse.value ? 'var(--color-primary)' : '#CCCCCC')
+//#endregion
+
+//#region 🧱 COURSE MODAL
+const courseTitle = ref('')
+const courseButton = ref('')
+const courseHandler = ref('')
+const isVisibleCourseModal = ref(false)
+
+const courseConfirm = async () => {
+    if (courseHandler.value === 'add') {
+        try {
+            const res = await axios.post("http://localhost:3000/add-course", {
+                course_image: courseImage.value,
+                course_name: courseName.value,
+                course_code: courseCode.value.toUpperCase()
+            })
+            console.log(res.data.message)
+        } catch (error) {
+            console.error("Error:", error)
+            alert("Failed to add course.")
+        }
+        fetchCourses()
+        toggleCourseModal('cancel')
+
+        // reset
+        courseImage.value = 0
+        courseName.value = ''
+        courseCode.value = ''
+    }
+
+    else if (courseHandler.value === 'update') {
+        try {
             const res = await axios.put(`http://localhost:3000/update-course/${selectedCourse.value.id}`, {
-            course_image: courseImage.value,
-            course_name: courseName.value,
-            course_code: courseCode.value.toUpperCase()
-            });
+                course_image: courseImage.value,
+                course_name: courseName.value,
+                course_code: courseCode.value.toUpperCase()
+            })
+            console.log(res.data.message)
+            fetchCourses()
+            selectedCourse.value = null
+            toggleCourseModal('cancel')
 
-            console.log(res.data.message);
-            alert("Course updated successfully!");
-            
-            fetchCourses();
-            selectedCourse.value = null;
-            toggleCourseModal('cancel');
-
-            // Reset Inputs
-            courseImage.value = 0;
-            courseName.value = '';
-            courseCode.value = '';
-            } catch (error) {
-                console.error("Error:", error);
-                alert("Failed to update course.");
-            }
+            // reset
+            courseImage.value = 0
+            courseName.value = ''
+            courseCode.value = ''
+        } catch (error) {
+            console.error("Error:", error)
+            alert("Failed to update course.")
         }
     }
+}
 
-    function toggleCourseModal(which) {
-        if(which === 'add'){
-            courseTitle.value = 'Department Information'
-            courseButton.value = 'Confirm'
-            courseHandler.value = 'add'
-            isVisibleCourseModal.value = !isVisibleCourseModal.value
-        }
-
-        else if(which === 'update'){
-            courseTitle.value = 'Update Information'
-            courseImage.value = selectedCourse.value.imgIndex;
-            courseName.value = selectedCourse.value.name;
-            courseCode.value = selectedCourse.value.code;
-            courseButton.value = 'Update'
-            courseHandler.value = 'update'
-            isVisibleCourseModal.value = !isVisibleCourseModal.value
-        }
-
-        else if(which === 'cancel'){
-            setTimeout(() => {
-                courseTitle.value = '';
-                courseImage.value = 0;
-                courseName.value = '';
-                courseCode.value = '';
-                courseButton.value = '';
-                courseHandler.value = '';
-            }, 100);
-
-            isVisibleCourseModal.value = !isVisibleCourseModal.value
-        }
+function toggleCourseModal(which) {
+    if (which === 'add') {
+        courseTitle.value = 'Department Information'
+        courseButton.value = 'Confirm'
+        courseHandler.value = 'add'
+        isVisibleCourseModal.value = !isVisibleCourseModal.value
     }
-
-    /////////////////////////////// Choose Image Modal ////////////////////////////
-    const isVisibleChooseImage = ref(false)
-
-    const imageChooseCancel = async () => {
-        courseImage.value = 0;
-        toggleChooseImage();
+    else if (which === 'update') {
+        courseTitle.value = 'Update Information'
+        courseImage.value = selectedCourse.value.imgIndex
+        courseName.value = selectedCourse.value.name
+        courseCode.value = selectedCourse.value.code
+        courseButton.value = 'Update'
+        courseHandler.value = 'update'
+        isVisibleCourseModal.value = !isVisibleCourseModal.value
     }
-
-    const imageChooseConfirm = async () => {
-        toggleChooseImage();
+    else if (which === 'cancel') {
+        setTimeout(() => {
+            courseTitle.value = ''
+            courseImage.value = 0
+            courseName.value = ''
+            courseCode.value = ''
+            courseButton.value = ''
+            courseHandler.value = ''
+        }, 100)
+        isVisibleCourseModal.value = !isVisibleCourseModal.value
     }
+}
+//#endregion
 
-    function toggleChooseImage() {
-        isVisibleChooseImage.value = !isVisibleChooseImage.value        
-    }
+//#region 🖼️ CHOOSE IMAGE MODAL
+const isVisibleChooseImage = ref(false)
+function toggleChooseImage() { isVisibleChooseImage.value = !isVisibleChooseImage.value }
 
-    
+const imageChooseCancel = async () => {
+    courseImage.value = 0
+    toggleChooseImage()
+}
+const imageChooseConfirm = async () => { toggleChooseImage() }
+//#endregion
+
+//#region 🧩 SUBJECT ASSIGN MODAL
+const isVisibleSubjectAssign = ref(false)
+function toggleSubjectAssignModal() { isVisibleSubjectAssign.value = !isVisibleSubjectAssign.value }
+//#endregion
 </script>
 
 <template>
@@ -291,10 +469,58 @@
                 <div style="display: flex; flex-direction: column; gap: 6px; flex: 1; padding-top: 34px;">
                     <div class="card-container" :class="{ empty: selectedCourse === null }">
                         <div style="display: flex; flex-direction: column; height: 100%; padding: 15px; padding-left: 30px; padding-right: 30px; gap: 10px;">
-                            <h3 style="margin: 0; line-height: 1;">Add Course</h3>
-                            <input placeholder="Search here.."></input>
+                            <h3 style="margin: 0; line-height: 1;">Add Subjects</h3>
                             
-                            <div style="height: 100%; width: 100%; margin-top: 4px;; border: 1px solid rgba(0, 0, 0, 0.2); box-shadow: 0 0px 4px rgba(0, 0, 0, 0.2); border-radius: 10px; ">
+                            <div style="position: relative; width: 100%;"  ref="subjectWrapper">
+                                <input v-model="addSubjects" 
+                                        @focus="inputFocused = true" 
+                                        placeholder="Search here..."></input>
+
+                                <!-- Dropdown suggestions -->
+                                <div v-if="inputFocused && filteredSubjects.length" 
+                                    style="position: absolute; display: flex; flex-direction: column; background-color: white;
+                                            width: 100%;  padding-top: 6px; padding-bottom: 6px; border-radius: 6px; border: 1px solid var(--color-border);
+                                            margin-top: 6px; box-sizing: border-box;
+                                            max-height: 200px; overflow-y: auto;"> 
+
+                                    <div v-for="(subj, index) in filteredSubjects" 
+                                        :key="subj.subject_id"
+                                        @click="selectSubject(subj)"
+                                        class="dropdown-item"
+                                        :class="{ 'assigned-course': fetchedSubjects.some(fs => fs.subject_id === subj.subject_id) }">
+                                        {{ subj.subject_name }}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div style="height: 100%; padding: 25px; margin-top: 4px; border: 1px solid rgba(0, 0, 0, 0.2); 
+                                        box-shadow: 0 0px 4px rgba(0, 0, 0, 0.2); border-radius: 10px; box-sizing: border-box;">
+                                
+                
+                                <h3 style="margin: 0; line-height: 1; margin-bottom: 20px;">Curriculum</h3>
+
+                                <!-- show a placeholder when empty -->
+                                <div v-if="fetchedSubjects.length === 0">
+                                    <p class="paragraph--gray">No subjects yet.</p>
+                                </div>
+
+                                <div v-for="(subjects, groupKey) in groupedSubjects" :key="groupKey" style="margin-bottom: 32px;">
+                                    <p class="paragraph--black-bold" style="margin-bottom: 6px;">{{ groupKey }}</p>
+
+                                    <div v-for="subj in subjects" :key="subj.subject_id"
+                                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0px; flex-wrap: wrap;">
+                                        <label style="flex: 1 1 auto; padding-left: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                            - {{ subj.subject_name }}
+                                        </label>
+
+                                        <span @click="removeSubject(subj.subject_id)"
+                                            style="display: flex; align-items: center; justify-content: center;
+                                                    height: 30px; width: 30px; color: red; font-weight: bold; cursor: pointer; flex-shrink: 0;">
+                                            ✕
+                                        </span>
+                                    </div>
+                                </div>
+
                             </div>
                         </div>
                     </div>
@@ -357,6 +583,40 @@
                     <button @click="imageChooseConfirm">Confirm</button>
                 </div>
                 </div>
+            </div>
+        </transition>
+
+        <!-- Choose Year and Semester Modal -->
+        <transition name="fade">
+            <div v-show="isVisibleSubjectAssign" class="modal" @click.self="toggleSubjectAssignModal()">
+               <div class="modal-content-subject-assign">
+                    <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">Subject Assign Information</h2>
+
+                    <div style="display: flex; flex-direction: row; width: 100%; gap: 14px;">
+                        <div style="flex: 1;">
+                            <p class="paragraph--black-bold" style="line-height: 1.8;">Year</p>
+                            <select v-model="year" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && year.trim() === '' }">
+                                <option value="1">1st Year</option>
+                                <option value="2">2nd Year</option>
+                                <option value="3">3rd Year</option>
+                                <option value="4">4th Year</option>
+                            </select>
+                        </div>
+
+                        <div style="flex: 1;">
+                            <p class="paragraph--black-bold" style="line-height: 1.8;">Semester</p>
+                            <select v-model="semester" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && semester.trim() === '' }">
+                                <option value="1">1st Semester</option>
+                                <option value="2">2nd Semester</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
+                        <button @click="toggleSubjectAssignModal()" class="cancelBtn">Cancel</button>
+                        <button @click="subjectAssignConfirm()">Confirm</button>
+                    </div>
+               </div>
             </div>
         </transition>
 
@@ -530,6 +790,22 @@
         gap: 20px;
     }
 
+    .modal-content-subject-assign {
+        display: flex;
+        flex-direction: column;
+        background-color: white;
+        height: auto;
+        align-items: center;
+        width: 450px;
+        padding-top: 35px;
+        padding-bottom: 35px;
+        padding-left: 45px;
+        padding-right: 45px;
+        box-shadow: -2px 0 8px rgba(0,0,0,0.2);
+        border-radius: 6px;
+        gap: 35px;
+    }
+
     .image-grid {
         display: grid;
         grid-template-columns: 1fr 1fr 1fr 1fr;
@@ -562,4 +838,33 @@
         height: 100px;
         object-fit: contain;
     }
+
+    .dropdown-item {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        cursor: pointer;
+        border-radius: 4px;
+        color: black;
+    }
+
+    .dropdown-item:hover {
+        background: #eee;
+    }
+
+    .dropdown-item.assigned-course {
+        background-color: #f0f0f0;
+        color: #666;
+        cursor: default;
+    }
+
+    .dropdown-item.assigned-course:hover {
+        background-color: #e0e0e0; 
+    }
+
+    .dropdown-item:not(.assigned-course):hover {
+        background: #eee;
+    }
+
 </style>

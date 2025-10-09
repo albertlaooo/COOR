@@ -1,5 +1,5 @@
 <script setup>
-    import { ref, onMounted, computed } from "vue"
+    import { ref, onMounted, onBeforeUnmount, computed } from "vue"
     import { useRouter } from 'vue-router'
     import axios from "axios";
 
@@ -10,9 +10,20 @@
     const departmentImage = ref(0);
     const departmentName = ref('');
     const departmentCode = ref('');
+    const addCourses = ref('')
+    const coursesDB = ref([]) // raw
+    const teacherDepartmentsDB = ref([]); // raw
+
+    // Fetched courses based on department click
+    const fetchedCourses = ref([])
+
+    // UI
+    const inputFocused = ref(false)
+    const courseWrapper = ref(null)
 
     // Selected Department
     const selectedDept = ref(null)
+    
 
     // Images
     import img0 from '@/assets/departments/0.webp'
@@ -34,47 +45,114 @@
     img.src = src
     })
 
+    /////////////////////////////// FETCH TEACHER DEPARTMENTS ////////////////////////////
+    const fetchTeacherDepartments = async () => {
+    try {
+        const res = await axios.get("http://localhost:3000/teacher-departments");
+        if (res.data.success && Array.isArray(res.data.associations)) {
+            // Store the raw associations
+            teacherDepartmentsDB.value = res.data.associations;
+        }
+    } catch (err) {
+        console.error("Error fetching raw teacher departments:", err);
+    }
+}
+
     /////////////////////////////// FETCH DEPARTMENTS ////////////////////////////
     const fetchDepartments = async () => {
         try {
+            // 1. Ensure course and teacher-department data are populated
+            if (coursesDB.value.length === 0) {
+                await fetchCourses();
+            }
+            // CALL NEW FETCH FUNCTION
+            await fetchTeacherDepartments(); 
+
+            // 2. Fetch Department Data
             const res = await axios.get("http://localhost:3000/departments");
 
-            departments.value = res.data.map(dept => ({
-                id: dept.department_id,
-                imgIndex: dept.department_image,
-                img: images[dept.department_image] || images[0],
-                name: dept.department_name,
-                code: dept.department_code,
+            // 3. Count courses per department_id (EXISTING LOGIC)
+            const courseCounts = coursesDB.value.reduce((acc, course) => {
+                const deptId = course.department_id;
+                acc[deptId] = (acc[deptId] || 0) + 1;
+                return acc;
+            }, {});
+
+            // 4. Count DISTINCT teachers per department_id (NEW LOGIC)
+            const teacherCounts = teacherDepartmentsDB.value.reduce((acc, item) => {
+                const deptId = item.department_id;
+                // Use a Set temporarily to ensure teachers are counted only once per department
+                if (!acc[deptId]) {
+                    acc[deptId] = new Set();
+                }
+                acc[deptId].add(item.teacher_id);
+                return acc;
+            }, {});
+
+            // 5. Map and populate departments.value with the correct counts
+            departments.value = res.data.map(dept => {
+                const deptId = dept.department_id;
                 
-                courses: 0,
-                teachers: 0
-            }));
+                // Convert the Set size to the final count, default to 0
+                const teacherCount = teacherCounts[deptId] ? teacherCounts[deptId].size : 0;
+
+                return {
+                    id: deptId,
+                    imgIndex: dept.department_image,
+                    img: images[dept.department_image] || images[0],
+                    name: dept.department_name,
+                    code: dept.department_code,
+                    
+                    // Get the counts from the maps
+                    courses: courseCounts[deptId] || 0, 
+                    // UPDATED: Use the calculated teacher count
+                    teachers: teacherCount 
+                };
+            });
+
+            console.log("Updated Departments:", departments.value);
         } catch (err) {
             console.error("Error fetching departments:", err);
         }
     }
 
-    onMounted(fetchDepartments);
+    // Automatically fetch data when the component is mounted
+    onMounted(async () => {
+        await fetchDepartments();
+    });
 
     /////////////////////////////// DELETE DEPARTMENTS ////////////////////////////
     async function deleteDepartment() {
         if (!selectedDept.value || !selectedDept.value.id) {
             return;
         }
+        
+        const departmentIdToDelete = selectedDept.value.id;
+        const deptName = selectedDept.value.name;
 
-        if (!confirm(`Are you sure you want to delete?`)) return;
+        if (!confirm(`Are you sure you want to delete the department: ${deptName}? All assigned courses will be unassigned.`)) {
+            return;
+        }
+
         try {
-            await axios.delete(`http://localhost:3000/departments/${selectedDept.value.id}`);
-            alert("Department deleted successfully!");
+            // CLEAR COURSES: Send PUT request to set department_id to NULL for all associated courses
+            console.log(`Clearing courses for Department ID: ${departmentIdToDelete}`);
+            await axios.put(`http://localhost:3000/courses/clear-department/${departmentIdToDelete}`);
+            
+            // DELETE DEPARTMENT
+            await axios.delete(`http://localhost:3000/departments/${departmentIdToDelete}`);
 
-            // refresh the list
-            fetchDepartments();
+            // UI Update (Refresh Data)
+            await fetchDepartments();
+            await fetchCourses(); 
 
-            // reset selection
             selectedDept.value = null;
+            fetchedCourses.value = [];
+            
         } catch (err) {
-            console.error("Error deleting department:", err);
-            alert("Failed to delete department.");
+            console.error("Error during department deletion or course clearing:", err);
+            // Mas specific na error message
+            alert("Failed to delete department. Please check if there are other related data (e.g., teachers) preventing the deletion, or check the console.");
         }
     }
 
@@ -92,6 +170,8 @@
             selectedDept.value = null;
         } else {
             selectedDept.value = dept;
+
+            fetchCoursesOnDepartment();
         }
     }
 
@@ -119,7 +199,6 @@
                     department_code: departmentCode.value.toUpperCase()
                 });
                 console.log(res.data.message);
-                alert("Add department Successfully!");
             } catch (error) {
                 console.error("Error:", error);
                 alert("Failed to add department.");
@@ -207,7 +286,174 @@
         isVisibleChooseImage.value = !isVisibleChooseImage.value        
     }
 
+    /////////////////////////////// ADD COURSES SECTION ////////////////////////////
+    //Fetch Courses 
+    const fetchCourses = async () => {
+        try {
+            const res = await axios.get("http://localhost:3000/courses");
+
+            if (res.data && Array.isArray(res.data)) {
+
+            // Clear first para walang duplicate
+            coursesDB.value.length = 0;
+
+            // Push each item
+            res.data.forEach(crse => {
+                coursesDB.value.push({
+                course_id: crse.course_id,
+                course_name: crse.course_name,
+                course_code: crse.course_code,
+                department_id: crse.department_id
+                });
+            });
+            }
+        } catch (err) {
+            console.error("Error fetching courses:", err);
+        }
+    }
+
+    onMounted(fetchCourses);
+
+    async function fetchCoursesOnDepartment(){
+        await fetchCourses();
+        fetchedCourses.value = coursesDB.value.filter(c => c.department_id === selectedDept.value.id);
+    }
     
+    /////////////////////////////// SEARCH FILTER COURSES ////////////////////////////
+    // Filter courses based on user input
+    const filteredCourses = computed(() => {
+        let results = [];
+
+        if (!addCourses.value) {
+            // show all courses if input is blank
+            results = coursesDB.value.map(crse => ({
+                course_id: crse.course_id,
+                course_name: crse.course_name,
+                course_code: crse.course_code || '',
+                // KASAMA NA ANG department_id
+                department_id: crse.department_id
+            }))
+        } else {
+            // filter based on input if user types
+            results = coursesDB.value
+                .filter(crse =>
+                    crse.course_name.toLowerCase().includes(addCourses.value.toLowerCase())
+                )
+                .map(crse => ({
+                    course_id: crse.course_id,
+                    course_name: crse.course_name,
+                    // KASAMA NA ANG department_id
+                    department_id: crse.department_id
+                }))
+        }
+
+        // --- Sorting Logic ---
+        // 1️⃣ Unassigned (null department_id) goes first
+        // 2️⃣ Assigned goes below
+        // 3️⃣ Both groups sorted alphabetically
+        return results.sort((a, b) => {
+            const aIsNull = a.department_id == null;
+            const bIsNull = b.department_id == null;
+
+            if (aIsNull && !bIsNull) return -1;
+            if (!aIsNull && bIsNull) return 1;
+
+            // Secondary alphabetical sort (both same group)
+            return a.course_name.localeCompare(b.course_name);
+        });
+    })
+
+    async function selectCourse(crse) {
+        // Find the full course data from the raw database list (coursesDB)
+        const courseData = coursesDB.value.find(c => c.course_id === crse.course_id);
+
+        if (!courseData) {
+            alert("Error: Course data not found.");
+            addCourses.value = '';
+            inputFocused.value = false;
+            return;
+        }
+
+        const currentDeptId = courseData.department_id;
+        
+        // SIMPLE LOGIC: If the course is assigned to ANY department (not null), block the action.
+        if (currentDeptId !== null) {
+            
+            // Optional: Get the name of the department it's currently assigned to for a better message
+            const currentDept = departments.value.find(d => d.id === currentDeptId);
+            const deptName = currentDept ? currentDept.name : 'another department';
+
+            alert(`${courseData.course_name} is already assigned to ${deptName}.`);
+            
+        } else {
+            // If department_id is null, proceed with the assignment
+            try {
+                // Send the request to update the course's department_id
+                const res = await fetch(`http://localhost:3000/courses/update-department/${crse.course_id}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ department_id: selectedDept.value.id })
+                });
+
+                const data = await res.json();
+
+                if (data.success) {
+                    // 1. Refresh the main course list from the DB
+                    await fetchCourses(); 
+                    await fetchDepartments(); 
+                    // 2. Refresh the filtered list for the selected department
+                    fetchCoursesOnDepartment(); 
+                    console.log("Course assigned successfully.");
+                } else {
+                    alert("Error assigning course: " + data.message);
+                }
+            } catch (err) {
+                console.error("Error during course assignment:", err);
+                alert("Failed to assign course to department.");
+            }
+        }
+
+        // Reset inputs regardless of outcome
+        addCourses.value = '';
+        inputFocused.value = false;
+    }
+
+    // Close dropdown when clicked outside
+    function handleClickOutside(event) {
+        if (courseWrapper.value && !courseWrapper.value.contains(event.target)) {
+            inputFocused.value = false
+        }
+    }
+
+    onMounted(() => {
+        document.addEventListener('mousedown', handleClickOutside)
+    })
+
+    onBeforeUnmount(() => {
+        document.removeEventListener('mousedown', handleClickOutside)
+    })
+
+    function removeCourse(index) {
+        const course = fetchedCourses.value[index];
+
+        // Send request to backend to remove department_id
+        fetch(`http://localhost:3000/courses/update-department/${course.course_id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ department_id: null }) // set to null
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                fetchCoursesOnDepartment();
+                fetchDepartments(); 
+            } else {
+                alert("Failed to remove course from department: " + data.message);
+            }
+        })
+        .catch(err => console.error(err));
+    }
+
 </script>
 
 <template>
@@ -289,10 +535,53 @@
                 <div style="display: flex; flex-direction: column; gap: 6px; flex: 1; padding-top: 34px;">
                     <div class="card-container"  :class="{ empty: selectedDept === null }">
                         <div style="display: flex; flex-direction: column; height: 100%; padding: 15px; padding-left: 30px; padding-right: 30px; gap: 10px;">
-                            <h3 style="margin: 0; line-height: 1;">Add Course</h3>
-                            <input placeholder="Search here.."></input>
+                            <h3 style="margin: 0; line-height: 1;">Add Courses</h3>
+
+                            <div style="position: relative; width: 100%;"  ref="courseWrapper">
+                                <input v-model="addCourses" 
+                                        @focus="inputFocused = true" 
+                                        placeholder="Search here..."></input>
+
+                                <!-- Dropdown suggestions -->
+                                <div v-if="inputFocused && filteredCourses.length" 
+                                    style="position: absolute; display: flex; flex-direction: column; background-color: white;
+                                            width: 100%;  padding-top: 6px; padding-bottom: 6px; border-radius: 6px; border: 1px solid var(--color-border);
+                                            margin-top: 6px; box-sizing: border-box;
+                                            max-height: 200px; overflow-y: auto;"> 
+
+                                    <div v-for="(crse, index) in filteredCourses" 
+                                        :key="crse.course_id"
+                                        @click="selectCourse(crse)"
+                                        class="dropdown-item"
+                                        :class="{ 'assigned-course': crse.department_id !== null }">
+                                        {{ crse.course_name }}
+                                    </div>
+                                </div>
+                            </div>
                             
-                            <div style="height: 100%; width: 100%; margin-top: 4px;; border: 1px solid rgba(0, 0, 0, 0.2); box-shadow: 0 0px 4px rgba(0, 0, 0, 0.2); border-radius: 10px; ">
+                            <div style="height: 100%; padding: 25px; margin-top: 4px; border: 1px solid rgba(0, 0, 0, 0.2); 
+                                        box-shadow: 0 0px 4px rgba(0, 0, 0, 0.2); border-radius: 10px; box-sizing: border-box;">
+                                        
+                                <h3 style="margin: 0; line-height: 1; margin-bottom: 12px;">Courses</h3>
+                                
+                                <!-- show a placeholder when empty -->
+                                <div v-if="fetchedCourses.length === 0">
+                                    <p class="paragraph--gray">No courses yet.</p>
+                                </div>
+
+                                <div v-for="(crse, index) in fetchedCourses" :key="crse"
+                                    style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; flex-wrap: wrap;">
+                                    
+                                    <label style="flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                        {{ crse.course_name }}
+                                    </label>
+
+                                    <span @click="removeCourse(index)"
+                                        style="display: flex; align-items: center; justify-content: center;
+                                                height: 30px; width: 30px; color: red; font-weight: bold; cursor: pointer; flex-shrink: 0;">
+                                        ✕
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -559,6 +848,34 @@
         width: 100px;
         height: 100px;
         object-fit: contain;
+    }
+
+    .dropdown-item {
+        padding-left: 12px;
+        padding-right: 12px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        cursor: pointer;
+        border-radius: 4px;
+        color: black;
+    }
+
+    .dropdown-item:hover {
+        background: #eee;
+    }
+
+    .dropdown-item.assigned-course {
+        background-color: #f0f0f0;
+        color: #666;
+        cursor: default;
+    }
+
+    .dropdown-item.assigned-course:hover {
+        background-color: #e0e0e0; 
+    }
+
+    .dropdown-item:not(.assigned-course):hover {
+        background: #eee;
     }
 
 
