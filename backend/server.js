@@ -90,7 +90,6 @@ db.serialize(() => {
             course_name TEXT NOT NULL,
             year INTEGER NOT NULL,
             semester INTEGER NOT NULL,
-            section TEXT NOT NULL,
             student_count INTEGER,
             academic_year TEXT NOT NULL,
             section_format TEXT NOT NULL
@@ -103,12 +102,11 @@ db.serialize(() => {
             course_name TEXT NOT NULL,
             year INTEGER NOT NULL,
             semester INTEGER NOT NULL,
-            section TEXT NOT NULL,
             student_count INTEGER,
             academic_year TEXT NOT NULL,
             section_format TEXT NOT NULL
           );
-    `);
+`);
 
     db.run(`
       CREATE TABLE IF NOT EXISTS Departments (
@@ -532,7 +530,6 @@ app.post("/add-section", (req, res) => {
     course_name,
     year,
     semester,
-    section,
     student_count,
     academic_year,
     section_format,
@@ -542,7 +539,6 @@ app.post("/add-section", (req, res) => {
     !course_name ||
     !year ||
     !semester ||
-    !section ||
     !academic_year ||
     !section_format
   ) {
@@ -553,21 +549,13 @@ app.post("/add-section", (req, res) => {
   }
 
   const sql = `
-    INSERT INTO Sections (course_name, year, semester, section, student_count, academic_year, section_format)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO Sections (course_name, year, semester, student_count, academic_year, section_format)
+    VALUES (?, ?, ?, ?, ?, ?)
   `;
 
   db.run(
     sql,
-    [
-      course_name,
-      year,
-      semester,
-      section,
-      student_count || 0,
-      academic_year,
-      section_format,
-    ],
+    [course_name, year, semester, student_count || 0, academic_year, section_format],
     function (err) {
       if (err) {
         console.error("Error inserting section:", err.message);
@@ -596,14 +584,13 @@ app.get("/sections", (req, res) => {
   });
 });
 
-// UPDATE Section (No vue code yet)
+// UPDATE Section
 app.put("/update-section/:id", (req, res) => {
   const { id } = req.params;
   const {
     course_name,
     year,
     semester,
-    section,
     student_count,
     academic_year,
     section_format,
@@ -613,7 +600,6 @@ app.put("/update-section/:id", (req, res) => {
     !course_name ||
     !year ||
     !semester ||
-    !section ||
     !academic_year ||
     !section_format
   ) {
@@ -625,22 +611,13 @@ app.put("/update-section/:id", (req, res) => {
 
   const sql = `
     UPDATE Sections 
-    SET course_name = ?, year = ?, semester = ?, section = ?, student_count = ?, academic_year = ?, section_format = ?
+    SET course_name = ?, year = ?, semester = ?, student_count = ?, academic_year = ?, section_format = ?
     WHERE section_id = ?
   `;
 
   db.run(
     sql,
-    [
-      course_name,
-      year,
-      semester,
-      section,
-      student_count || 0,
-      academic_year,
-      section_format,
-      id,
-    ],
+    [course_name, year, semester, student_count || 0, academic_year, section_format, id],
     function (err) {
       if (err) {
         console.error("Error updating section:", err.message);
@@ -651,16 +628,14 @@ app.put("/update-section/:id", (req, res) => {
         });
       }
       if (this.changes === 0) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Section not found" });
+        return res.status(404).json({ success: false, message: "Section not found" });
       }
       res.json({ success: true, message: "Section updated successfully" });
     }
   );
 });
 
-// DELETE Section (No vue code yet)
+// DELETE Section
 app.delete("/sections/:id", (req, res) => {
   const id = req.params.id;
 
@@ -673,7 +648,7 @@ app.delete("/sections/:id", (req, res) => {
   });
 });
 
-// UPDATE ALL Academic year and Semester of sections (Move Up)
+// UPDATE ALL Academic year and Semester (Move Up)
 app.post("/sections/update-semester", (req, res) => {
   const { academic_year, semester, new_academic_year, new_semester } = req.body;
   const clean_academic_year = academic_year.replace(/–/g, '-'); 
@@ -690,7 +665,6 @@ app.post("/sections/update-semester", (req, res) => {
     function (err) {
       if (err) {
         console.error("Error updating sections for move up:", err.message);
-        // Add a failure response for the client to catch
         return res.status(500).json({ success: false, message: "Database update error" });
       }
 
@@ -700,16 +674,15 @@ app.post("/sections/update-semester", (req, res) => {
         console.log(`Successfully moved up ${this.changes} sections.`);
       }
 
-      // Send a success response
       res.json({ success: true, changes: this.changes, message: "Sections moved up successfully" });
     }
   );
 });
 
-// UPDATE Individual sections and section_format.
+// UPDATE Individual sections and section_format
 app.put("/sections/advance/:id", (req, res) => {
   const { id } = req.params;
-  const { new_academic_year, new_semester, new_year, new_section_format } = req.body; // ⬅️ NEW: Catch the format
+  const { new_academic_year, new_semester, new_year, new_section_format } = req.body;
 
   if (!new_academic_year || !new_semester || !new_year || !new_section_format) {
     return res.status(400).json({
@@ -726,7 +699,7 @@ app.put("/sections/advance/:id", (req, res) => {
 
   db.run(
     sql,
-    [new_academic_year, new_semester, new_year, new_section_format, id], // ⬅️ NEW: Pass the format to SQL
+    [new_academic_year, new_semester, new_year, new_section_format, id],
     function (err) {
       if (err) {
         console.error(`Error advancing section ${id}:`, err.message);
@@ -737,9 +710,7 @@ app.put("/sections/advance/:id", (req, res) => {
         });
       }
       if (this.changes === 0) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Section not found for update" });
+        return res.status(404).json({ success: false, message: "Section not found for update" });
       }
       res.json({ success: true, message: `Section ${id} advanced successfully` });
     }
@@ -756,8 +727,8 @@ app.post("/sections/archive-sections", (req, res) => {
   const clean_academic_year = academic_year.replace(/–/g, '-');
 
   const insertSql = `
-    INSERT INTO SectionsArchived (course_name, year, semester, section, student_count, academic_year, section_format)
-    SELECT course_name, year, semester, section, student_count, academic_year, section_format
+    INSERT INTO SectionsArchived (course_name, year, semester, student_count, academic_year, section_format)
+    SELECT course_name, year, semester, student_count, academic_year, section_format
     FROM Sections
     WHERE academic_year = ? AND semester = ?
   `;

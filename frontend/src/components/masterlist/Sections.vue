@@ -1,490 +1,458 @@
 <script setup>
-    import { useRouter } from 'vue-router'
-    import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue"
-    import axios from "axios";
-    const router = useRouter()
+import { useRouter } from 'vue-router'
+import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue"
+import axios from "axios"
 
-    function backBtn() {
-        router.push(`/main/masterlist`)
-    }
+//#region 🧭 ROUTER
+const router = useRouter()
+function backBtn() {
+    router.push(`/main/masterlist`)
+}
+//#endregion
 
-    const isVisibleMoveUpModal = ref(false)
-    const isVisibleAddSection = ref(false)
-    const passwordConfirmation = ref("")
-    const selectedGroupKey = ref("")
+//#region ⚙️ STATE VARIABLES
+const isVisibleMoveUpModal = ref(false)
+const isVisibleAddSection = ref(false)
+const passwordConfirmation = ref("")
+const selectedGroupKey = ref("")
 
-    const searchQueryActive = ref('')
-    const searchQueryArchived = ref('')
+const searchQueryActive = ref('')
+const searchQueryArchived = ref('')
 
+const activeTab = ref("active") // default active
+const moveUpConfirmation = ref("note") // default note
+//#endregion
 
-    /////////////////////////////// FETCH SECTIONS ////////////////////////////
-    const sections = ref([])
+//#region 📘 FETCH SECTIONS
+const sections = ref([])
 
-    const fetchSections = async () => {
+const fetchSections = async () => {
     try {
         const res = await axios.get("http://localhost:3000/sections")
         sections.value = res.data
     } catch (err) {
         console.error("Error fetching sections:", err)
     }
-    }
+}
 
-    // Group sections by "A.Y. YEAR – Semester"
-    const groupedSections = computed(() => {
+// Group sections by "A.Y. YEAR – Semester" (latest first)
+const groupedSections = computed(() => {
     const groups = {}
-    const semesterMap = {
-        1: "1st Semester",
-        2: "2nd Semester"
-    }
+    const semesterMap = { 1: "1st Semester", 2: "2nd Semester" }
 
-    sections.value.forEach((sec) => {
+    sections.value.forEach(sec => {
         const semesterText = semesterMap[sec.semester] || sec.semester
         const key = `A.Y. ${sec.academic_year} – ${semesterText}`
 
-        if (!groups[key]) {
-        groups[key] = []
-        }
+        if (!groups[key]) groups[key] = []
         groups[key].push(sec)
     })
 
-    return groups
+    // Sort keys in reverse order (latest A.Y. first, 2nd semester before 1st)
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+        const [aYear, aSem] = a.match(/A\.Y\. (\d{4})-(\d{4}) – (.*)/).slice(1)
+        const [bYear, bSem] = b.match(/A\.Y\. (\d{4})-(\d{4}) – (.*)/).slice(1)
+
+        // Compare start years (descending)
+        if (bYear !== aYear) return bYear - aYear
+
+        // Then compare semesters (2nd before 1st)
+        const semOrder = { "1st Semester": 1, "2nd Semester": 2 }
+        return semOrder[bSem] - semOrder[aSem]
     })
 
-    /////////////////////////////// FETCH ARCHIVED SECTIONS ////////////////////////////
-    const archivedSections = ref([])
+    // Rebuild the object in sorted order
+    const sortedGroups = {}
+    sortedKeys.forEach(key => {
+        sortedGroups[key] = groups[key]
+    })
 
-    const fetchArchivedSections = async () => {
+    return sortedGroups
+})
+//#endregion
+
+//#region 📕 FETCH ARCHIVED SECTIONS
+const archivedSections = ref([])
+
+const fetchArchivedSections = async () => {
     try {
         const res = await axios.get("http://localhost:3000/sections-archived")
         archivedSections.value = res.data
     } catch (err) {
         console.error("Error fetching archived sections:", err)
     }
-    }
+}
 
-    // Group archived sections by "A.Y. YEAR – Semester"
-    const groupedArchivedSections = computed(() => {
+// Group archived sections by "A.Y. YEAR – Semester" (latest first)
+const groupedArchivedSections = computed(() => {
     const groups = {}
-    const semesterMap = {
-        1: "1st Semester",
-        2: "2nd Semester"
-    }
+    const semesterMap = { 1: "1st Semester", 2: "2nd Semester" }
 
-    archivedSections.value.forEach((sec) => {
+    archivedSections.value.forEach(sec => {
         const semesterText = semesterMap[sec.semester] || sec.semester
         const key = `A.Y. ${sec.academic_year} – ${semesterText}`
 
-        if (!groups[key]) {
-        groups[key] = []
-        }
+        if (!groups[key]) groups[key] = []
         groups[key].push(sec)
     })
 
-    return groups
+    // Sort keys in reverse order (latest year and semester first)
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+        const [aStart, aEnd, aSem] = a.match(/A\.Y\. (\d{4})-(\d{4}) – (.*)/).slice(1)
+        const [bStart, bEnd, bSem] = b.match(/A\.Y\. (\d{4})-(\d{4}) – (.*)/).slice(1)
+
+        // Compare academic years (descending)
+        if (bStart !== aStart) return bStart - aStart
+
+        // Compare semesters (2nd before 1st)
+        const semOrder = { "1st Semester": 1, "2nd Semester": 2 }
+        return semOrder[bSem] - semOrder[aSem]
     })
 
-    onMounted(() => {
-        fetchSections()
-        fetchArchivedSections()
+    // Rebuild sorted object
+    const sortedGroups = {}
+    sortedKeys.forEach(key => {
+        sortedGroups[key] = groups[key]
     })
 
-    async function deleteArchivedSection(key) {
-    if (!confirm(`Are you sure you want to delete ${key}?`)) return;
+    return sortedGroups
+})
+//#endregion
 
-        const regex = /A\.Y\. (.*?) – (.*)/;
-        const match = key.match(regex);
+//#region 🗑️ DELETE ARCHIVED SECTIONS
+async function deleteArchivedSection(key) {
+    if (!confirm(`Are you sure you want to delete ${key}?`)) return
 
-        if (!match) {
-            alert("Invalid group key format.");
-            return;
-        }
+    const regex = /A\.Y\. (.*?) – (.*)/
+    const match = key.match(regex)
 
-        const academic_year = match[1];
-        const semesterText = match[2];
-        const semester = semesterText.includes("1st") ? 1 : 2;
+    if (!match) {
+        alert("Invalid group key format.")
+        return
+    }
 
-        try {
-            const res = await axios.delete(
+    const academic_year = match[1]
+    const semesterText = match[2]
+    const semester = semesterText.includes("1st") ? 1 : 2
+
+    try {
+        const res = await axios.delete(
             `http://localhost:3000/sections-archived/${academic_year}/${semester}`
-            );
-
-            if (res.data.success) {
-            alert("Archived sections deleted successfully.");
-            await fetchArchivedSections();
-            } else {
-            alert("Failed to delete archived sections.");
-            }
-        } catch (err) {
-            console.error("Error deleting archived sections:", err);
-            alert("An error occurred while deleting archived sections.");
-        }
-    }
-
-    /////////////////////////////// FETCH COURSES ////////////////////////////
-    const coursesDB = ref([])
-    const fetchCourses = async () => {
-        try {
-            const res = await axios.get("http://localhost:3000/courses");
-
-            if (res.data && Array.isArray(res.data)) {
-
-            // Clear first para walang duplicate
-            coursesDB.value.length = 0;
-
-            // Push each item
-            res.data.forEach(crse => {
-                coursesDB.value.push({
-                course_id: crse.course_id,
-                course_name: crse.course_name,
-                course_code: crse.course_code
-                });
-            });
-            }
-        } catch (err) {
-            console.error("Error fetching courses:", err);
-        }
-    }
-
-    onMounted(fetchCourses);
-
-    const activeTab = ref("active") // default active
-    const moveUpConfirmation = ref("note") // default note
-    
-    /////////////////////////////// MOVE UP MODAL ////////////////////////////
-
-    function cancelMoveUpBtn(){
-        isVisibleMoveUpModal.value = !isVisibleMoveUpModal.value;
-        moveUpConfirmation.value = 'note'
-    }
-
-    function toggleMoveUpModal(groupKey){
-        selectedGroupKey.value = groupKey
-        isVisibleMoveUpModal.value = !isVisibleMoveUpModal.value;
-    }
-
-    // Helper to recalculate section_format after year/semester change
-    function recalculateSectionFormat(section, newYear, newSemester) {
-        // 1Find the course code for the section's course_name
-        const selectedCourse = coursesDB.value.find(
-            crse => crse.course_name.toLowerCase() === section.course_name.toLowerCase().trim()
         )
 
-        const courseCode = selectedCourse?.course_code || ''
-
-        // Prepare new section format parts
-        const yearPart = newYear ? ` ${newYear}` : ''
-        const semesterPart = newSemester ? `-${newSemester}` : ''
-        const sectionPart = section.section ? section.section : '' // Use the existing section letter
-
-        // Combine all parts (e.g., BSCS 2-1A)
-        return `${courseCode}${yearPart}${semesterPart}${sectionPart}`.trim()
-    }
-
-    async function moveUpBtn() {
-        if (passwordConfirmation.value === 'admin1234') {
-            // Regex: A.Y. (YEAR-YEAR) – (SEMESTER TEXT)
-            const regex = /^A\.Y\. (\d{4}[–-]\d{4}) – (.*)$/;
-            const match = selectedGroupKey.value.match(regex);
-
-            if (!match) {
-                alert("Invalid group key format. Expected: A.Y. 2024–2025 – 1st Semester");
-                return;
-            }
-
-            // Extract original parts and standardize academic year
-            const currentAcademicYear = match[1].replace(/–/g, '-');
-            const [startYearStr, endYearStr] = currentAcademicYear.split('-');
-            const startYear = parseInt(startYearStr);
-            const endYear = parseInt(endYearStr);
-                
-            const semesterText = match[2].trim();
-            const semester = semesterText.includes("1st") ? 1 : 2;
-
-            // ⚠️ Extract the current sections to process the 'year' field
-            const sectionsToMove = sections.value.filter(
-                sec => sec.academic_year.replace(/–/g, '-') === currentAcademicYear && sec.semester === semester
-            );
-
-            if (sectionsToMove.length === 0) {
-                alert("No active sections found for this Academic Year and Semester to move up.");
-                isVisibleMoveUpModal.value = false;
-                moveUpConfirmation.value = 'note';
-                return;
-            }
-
-            try {
-                // 1. Archive ALL sections for the current A.Y. and Semester
-                await axios.post("http://localhost:3000/sections/archive-sections", {
-                    academic_year: currentAcademicYear,
-                    semester,
-                });
-
-                // 2. Determine the new status for each section and send individual updates
-
-                for (const section of sectionsToMove) {
-                    let newSemester = section.semester;
-                    let newAcademicYear = currentAcademicYear;
-                    let newYear = section.year;
-                    let deleteAfterArchive = false;
-                    let newSectionFormat = section.section_format; // Default to current format
-
-                    if (section.semester === 1) {
-                        // Move from Sem 1 to Sem 2 (same A.Y., same year level)
-                        newSemester = 2;
-                        
-                    } else if (section.semester === 2) {
-                        // Move from Sem 2 to next Sem 1
-
-                        // Check for graduation (Year 4 completion)
-                        if (section.year >= 4) { // Assuming 4 is the max year
-                            deleteAfterArchive = true;
-                            
-                        } else {
-                            // Advance to next year level (e.g., Year 1 -> Year 2)
-                            newYear = section.year + 1;
-                            newSemester = 1;
-                            // Advance to next Academic Year
-                            newAcademicYear = `${startYear + 1}-${endYear + 1}`;
-                        }
-                    }
-                    
-                    // Recalculate section format only if it's NOT a graduating section
-                    if (!deleteAfterArchive) {
-                        newSectionFormat = recalculateSectionFormat(section, newYear, newSemester);
-                    }
-
-                    if (deleteAfterArchive) {
-                        // 2b. If it's a graduating section, delete it from the Sections table
-                        await axios.delete(`http://localhost:3000/sections/${section.section_id}`);
-                    } else {
-                        // 2c. Otherwise, update the section with new year/semester/academic_year/format
-                        await axios.put(`http://localhost:3000/sections/advance/${section.section_id}`, {
-                            new_academic_year: newAcademicYear,
-                            new_semester: newSemester,
-                            new_year: newYear,
-                            new_section_format: newSectionFormat, // ⬅️ NEW: Send the updated format
-                        });
-                    }
-                }
-
-                alert("Sections moved up successfully!");
-
-                await fetchSections();
-                await fetchArchivedSections();
-
-                isVisibleMoveUpModal.value = false;
-                moveUpConfirmation.value = 'note';
-
-            } catch (err) {
-                console.error("Error moving up sections:", err);
-                alert("Failed to move up sections. See console for details.");
-            }
+        if (res.data.success) {
+            alert("Archived sections deleted successfully.")
+            await fetchArchivedSections()
         } else {
-            alert("Wrong password!");
+            alert("Failed to delete archived sections.")
         }
+    } catch (err) {
+        console.error("Error deleting archived sections:", err)
+        alert("An error occurred while deleting archived sections.")
+    }
+}
+//#endregion
+
+//#region 📚 FETCH COURSES
+const coursesDB = ref([])
+
+const fetchCourses = async () => {
+    try {
+        const res = await axios.get("http://localhost:3000/courses")
+        if (res.data && Array.isArray(res.data)) {
+            coursesDB.value.length = 0 // clear duplicates
+            res.data.forEach(crse => {
+                coursesDB.value.push({
+                    course_id: crse.course_id,
+                    course_name: crse.course_name,
+                    course_code: crse.course_code
+                })
+            })
+        }
+    } catch (err) {
+        console.error("Error fetching courses:", err)
+    }
+}
+//#endregion
+
+//#region 📦 MOVE UP MODAL
+function cancelMoveUpBtn() {
+    isVisibleMoveUpModal.value = !isVisibleMoveUpModal.value
+    moveUpConfirmation.value = 'note'
+}
+
+function toggleMoveUpModal(groupKey) {
+    selectedGroupKey.value = groupKey
+    isVisibleMoveUpModal.value = !isVisibleMoveUpModal.value
+}
+
+// Simplified recalculateSectionFormat – no more section parameter
+function recalculateSectionFormat(courseName, newYear) {
+    const selectedCourse = coursesDB.value.find(
+        crse => crse.course_name.toLowerCase() === courseName.toLowerCase().trim()
+    )
+
+    const courseCode = selectedCourse?.course_code || ''
+    const yearPart = newYear ? ` ${newYear}` : ''
+
+    return `${courseCode}${yearPart}`.trim()
+}
+
+async function moveUpBtn() {
+    if (passwordConfirmation.value !== 'admin1234') {
+        alert("Wrong password!")
+        return
     }
 
+    const regex = /^A\.Y\. (\d{4}[–-]\d{4}) – (.*)$/
+    const match = selectedGroupKey.value.match(regex)
+    if (!match) {
+        alert("Invalid group key format.")
+        return
+    }
 
+    const currentAcademicYear = match[1].replace(/–/g, '-')
+    const [startYearStr, endYearStr] = currentAcademicYear.split('-')
+    const startYear = parseInt(startYearStr)
+    const endYear = parseInt(endYearStr)
 
+    const semesterText = match[2].trim()
+    const semester = semesterText.includes("1st") ? 1 : 2
 
+    const sectionsToMove = sections.value.filter(
+        sec => sec.academic_year.replace(/–/g, '-') === currentAcademicYear && sec.semester === semester
+    )
 
+    if (sectionsToMove.length === 0) {
+        alert("No active records found.")
+        isVisibleMoveUpModal.value = false
+        moveUpConfirmation.value = 'note'
+        return
+    }
 
-    /////////////////////////////// ADD SECTION MODAL ////////////////////////////
-    // data value
-    const course = ref('')
-    const year = ref('')
-    const semester = ref('')
-    const section = ref('')
-    const academicYear = ref('')
-    const studentsCount = ref(0)
-    const sectionFormat = ref('')
-    const sectionHandler = ref()
+    try {
+        // Archive all records for current A.Y. and semester
+        await axios.post("http://localhost:3000/sections/archive-sections", {
+            academic_year: currentAcademicYear,
+            semester,
+        })
 
-    // UI
-    const sectionTitle = ref()
-    const sectionButton = ref()
-    const courseWrapper = ref(null)
-    const inputFocused = ref(false)
-    const showErrorInput = ref(false)
+        // Advance each record
+        for (const record of sectionsToMove) {
+            let newSemester = record.semester
+            let newAcademicYear = currentAcademicYear
+            let newYear = record.year
+            let deleteAfterArchive = false
+            let newSectionFormat = record.section_format
 
-    // Filter courses based on user input
-    const filteredCourses = computed(() => {
-        if (!course.value) {
-            // show all courses if input is blank
-            return coursesDB.value.map(crse => ({
-                course_id: crse.course_id,
-                course_name: crse.course_name,
-                course_code: crse.course_code  || ''
-            }))
+            if (record.semester === 1) {
+                newSemester = 2
+            } else if (record.semester === 2) {
+                if (record.year >= 4) {
+                    deleteAfterArchive = true
+                } else {
+                    newYear = record.year + 1
+                    newSemester = 1
+                    newAcademicYear = `${startYear + 1}-${endYear + 1}`
+                }
+            }
+
+            if (!deleteAfterArchive) {
+                // Pass the course_name field directly (no section object)
+                newSectionFormat = recalculateSectionFormat(record.course_name, newYear)
+            }
+
+            if (deleteAfterArchive) {
+                await axios.delete(`http://localhost:3000/sections/${record.section_id}`)
+            } else {
+                await axios.put(`http://localhost:3000/sections/advance/${record.section_id}`, {
+                    new_academic_year: newAcademicYear,
+                    new_semester: newSemester,
+                    new_year: newYear,
+                    new_section_format: newSectionFormat,
+                })
+            }
         }
 
-        // filter based on input if user types
-        return coursesDB.value
-            .filter(crse =>
-                crse.course_name.toLowerCase().includes(course.value.toLowerCase())
-            )
-            .map(crse => ({
-                course_id: crse.course_id,
-                course_name: crse.course_name
-            }))
-    })
+        alert("Records moved up successfully!")
+        await fetchSections()
+        await fetchArchivedSections()
 
-    function selectCourse(crse){
-        course.value = crse.course_name
+        isVisibleMoveUpModal.value = false
+        moveUpConfirmation.value = 'note'
+    } catch (err) {
+        console.error("Error moving up records:", err)
+        alert("Failed to move up records.")
+    }
+}
+//#endregion
+
+//#region ➕ ADD SECTION MODAL
+// Data
+const course = ref('')
+const year = ref('')
+const semester = ref('')
+const academicYear = ref('')
+const studentsCount = ref(0)
+const sectionFormat = ref('')
+const sectionHandler = ref()
+
+// UI
+const sectionTitle = ref()
+const sectionButton = ref()
+const courseWrapper = ref(null)
+const inputFocused = ref(false)
+const showErrorInput = ref(false)
+
+// Filtered Courses
+const filteredCourses = computed(() => {
+    if (!course.value) {
+        return coursesDB.value.map(crse => ({
+            course_id: crse.course_id,
+            course_name: crse.course_name,
+            course_code: crse.course_code || ''
+        }))
+    }
+
+    return coursesDB.value
+        .filter(crse =>
+            crse.course_name.toLowerCase().includes(course.value.toLowerCase())
+        )
+        .map(crse => ({
+            course_id: crse.course_id,
+            course_name: crse.course_name
+        }))
+})
+
+function selectCourse(crse) {
+    course.value = crse.course_name
+    inputFocused.value = false
+}
+
+function handleClickOutside(event) {
+    if (courseWrapper.value && !courseWrapper.value.contains(event.target)) {
         inputFocused.value = false
     }
+}
 
-    // Close dropdown when clicked outside
-    function handleClickOutside(event) {
-        if (courseWrapper.value && !courseWrapper.value.contains(event.target)) {
-            inputFocused.value = false
-        }
-    }
+onMounted(() => {
+    fetchSections()
+    fetchArchivedSections()
+    fetchCourses()
+    document.addEventListener('mousedown', handleClickOutside)
+})
+onBeforeUnmount(() => {
+    document.removeEventListener('mousedown', handleClickOutside)
+})
 
-    onMounted(() => {
-        document.addEventListener('mousedown', handleClickOutside)
-    })
-
-    onBeforeUnmount(() => {
-        document.removeEventListener('mousedown', handleClickOutside)
-    })
-
-    function notListed() {
-        router.push(`/main/masterlist/courses`);
-    }
-
-    // academic year options
-    const currentYear = new Date().getFullYear()
-
-    const academicYears = ref(
+// Academic Year Options
+const currentYear = new Date().getFullYear()
+const academicYears = ref(
     Array.from({ length: 2 }, (_, i) => {
         const start = currentYear - 1 + i
         const end = start + 1
-        return {
-        value: `${start}-${end}`,
-        label: `${start}-${end}`
-        }
+        return { value: `${start}-${end}`, label: `${start}-${end}` }
     })
-    )
+)
 
-    // Students Count
-    const handleStudentCountInput = (e) => {
-    // Keep only digits
+// Handlers
+function notListed() {
+    router.push(`/main/masterlist/courses`)
+}
+
+const handleStudentCountInput = (e) => {
     const value = e.target.value.replace(/[^0-9]/g, "")
-    // Update both input and ref
     e.target.value = value
     studentsCount.value = value ? parseInt(value) : 0
+}
+
+function toggleSectionModal(which) {
+    isVisibleAddSection.value = !isVisibleAddSection.value
+
+    if (which === 'add') {
+        sectionTitle.value = 'Section Information'
+        sectionButton.value = 'Confirm'
+        sectionHandler.value = 'add'
+    } else if (which === 'update') {
+        sectionTitle.value = 'Update Information'
+        sectionButton.value = 'Update'
+        sectionHandler.value = 'update'
+    } else if ('cancel') {
+        resetInputs()
+        showErrorInput.value = false
     }
+}
 
-    const toggleSectionModal = (which) => {
-        isVisibleAddSection.value = !isVisibleAddSection.value
+function resetInputs() {
+    setTimeout(() => {
+        course.value = ''
+        year.value = ''
+        semester.value = ''
+        academicYear.value = ''
+        studentsCount.value = 0
+        sectionFormat.value = ''
+    }, 100)
+}
 
-        if(which === 'add'){
-            sectionTitle.value = 'Section Information'
-            sectionButton.value = 'Confirm'
-            sectionHandler.value = 'add'
-        }
-
-        else if(which === 'update'){
-            sectionTitle.value = 'Update Information'
-            sectionButton.value = 'Update'
-            sectionHandler.value = 'update'
-        }
-        
-        else if('cancel'){
-            resetInputs();
-            showErrorInput.value = false
-        }
-    }
-
-    function resetInputs() {
-        setTimeout(() => {
-            course.value = ''
-            year.value = ''
-            semester.value = ''
-            section.value = ''
-            academicYear.value = ''
-            studentsCount.value = 0
-            sectionFormat.value = ''
-        }, 100);
-    }
-
-    // define courseExists
-    const courseExists = computed(() =>
-        coursesDB.value.some(
-            crse => crse.course_name.toLowerCase() === course.value.toLowerCase().trim()
-        )
+const courseExists = computed(() =>
+    coursesDB.value.some(
+        crse => crse.course_name.toLowerCase() === course.value.toLowerCase().trim()
     )
-    const sectionConfirm = async () => {
-    
-        if(course.value !== '' &&
-            courseExists.value &&
-            year.value !== '' &&
-            semester.value !== '' &&
-            section.value !== '' &&
-            academicYear.value !== '' &&
-            studentsCount.value !== 0
-            ){
-            
-            if(sectionHandler.value == 'add') {
-                try {
-                    const res = await axios.post("http://localhost:3000/add-section", {
+)
+
+const sectionConfirm = async () => {
+    if (
+        course.value &&
+        courseExists.value &&
+        year.value &&
+        semester.value &&
+        academicYear.value &&
+        studentsCount.value !== 0
+    ) {
+        if (sectionHandler.value === 'add') {
+            try {
+                const res = await axios.post("http://localhost:3000/add-section", {
                     course_name: course.value,
                     year: year.value,
                     semester: semester.value,
-                    section: section.value,
                     academic_year: academicYear.value,
-                    student_count: studentsCount.value || 0,
+                    student_count: studentsCount.value,
                     section_format: sectionFormat.value
-                    })
+                })
 
-                    if (res.data.success) {
-                    console.log("Section added successfully!") 
-                    console.log("success")
-
-                    } else {
-                    console.log(res.data.message || "Failed to add section.") 
-                    console.log("error")
-                    }
-                } catch (err) {
-                    console.error(err)
-                } 
-                fetchSections()
-                toggleSectionModal()
+                if (res.data.success) {
+                    console.log("Section added successfully!")
+                } else {
+                    console.log(res.data.message || "Failed to add section.")
+                }
+            } catch (err) {
+                console.error(err)
             }
 
-            else if(sectionHandler.value == 'update') {
-                alert("updated")
-            }
+            fetchSections()
+            toggleSectionModal()
+        } else if (sectionHandler.value === 'update') {
+            alert("updated")
         }
-
-        else {
-            showErrorInput.value = false
-            setTimeout(() => { showErrorInput.value = true; }, 0);
-        }
-
+    } else {
+        showErrorInput.value = false
+        setTimeout(() => { showErrorInput.value = true }, 0)
     }
+}
 
-    // 👇 Watch for changes in course, year, semester, or section
-    watch([course, year, semester, section, coursesDB], () => {
-        // 1️⃣ Find the course in the database
-        const selectedCourse = coursesDB.value.find(
-            crse => crse.course_name.toLowerCase() === course.value.toLowerCase().trim()
-        )
+// Auto-generate section format
+watch([course, year, semester, coursesDB], () => {
+    const selectedCourse = coursesDB.value.find(
+        crse => crse.course_name.toLowerCase() === course.value.toLowerCase().trim()
+    )
 
-        // 2️⃣ Get course code if found, else empty
-        const courseCode = selectedCourse?.course_code || ''
+    const courseCode = selectedCourse?.course_code || ''
+    const yearPart = year.value ? ` ${year.value}` : ''
 
-        // 3️⃣ Prepare section format parts
-        const yearPart = year.value ? ` ${year.value}` : ''
-        const semesterPart = semester.value ? `-${semester.value}` : ''
-        const sectionPart = section.value ? `${section.value}` : ''
-
-        // 4️⃣ Combine all parts (e.g. BSCS 1-1A)
-        sectionFormat.value = `${courseCode}${yearPart}${semesterPart}${sectionPart}`.trim()
-    }, { deep: true })
-
-    </script>
+    sectionFormat.value = `${courseCode}${yearPart}`.trim()
+}, { deep: true })
+//#endregion
+</script>
 
 <template>
     <div id="container">
@@ -647,8 +615,6 @@
                     </div>
                 </div>
             </div>
-
-
         </main>
 
         <!-- Move Up / Archive Modal -->
@@ -752,20 +718,15 @@
                             </div>
 
                             <div>
+                                <p class="paragraph--black-bold" style="line-height: 1.8;">Section Format</p>
+                                <input v-model="sectionFormat" readonly style="pointer-events: none; background-color: var(--color-lightgray);"></input>
+                            </div>
+                            
+                            <div>
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Semester</p>
                                 <select v-model="semester" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && semester.trim() === '' }">
                                     <option value="1">1st Semester</option>
                                     <option value="2">2nd Semester</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <p class="paragraph--black-bold" style="line-height: 1.8;">Section</p>
-                                <select v-model="section" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && section.trim() === '' }">
-                                    <option value="A">A</option>
-                                    <option value="B">B</option>
-                                    <option value="C">C</option>
-                                    <option value="D">B</option>
                                 </select>
                             </div>
 
@@ -786,10 +747,7 @@
                                 <input :value="studentsCount" @input="handleStudentCountInput" inputmode="numeric" pattern="[0-9]*" :class="{ 'error-input-border': showErrorInput && studentsCount === 0 }"></input>
                             </div>
 
-                            <div>
-                                <p class="paragraph--black-bold" style="line-height: 1.8;">Section Format</p>
-                                <input v-model="sectionFormat" readonly style="pointer-events: none; background-color: var(--color-lightgray);"></input>
-                            </div>
+
 
                         </div>
                         

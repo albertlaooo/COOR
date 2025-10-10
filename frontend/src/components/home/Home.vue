@@ -183,7 +183,7 @@ function isToday(day) {
                         </div>
 
                         <!-- Today's Schedule -->
-                        <div style="display: flex; flex-direction: column; width: 380px; padding: 20px 26px; background-color: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15); gap: 12px;">
+                        <div style="display: flex; flex-direction: column; width: 380px; padding: 20px 26px; background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); gap: 12px;">
                             <div style="border-bottom: 1px solid var(--color-border); padding-bottom: 12px;">
                                 <p class="paragraph--black-bold">Today's Schedule</p>
                             </div>
@@ -293,7 +293,7 @@ function isToday(day) {
                     </div>
 
                     <!-- notes -->
-                    <div style="display: flex; flex-direction: column; padding: 25px; background-color: white; border-radius: 12px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15); gap: 12px;">
+                    <div style="display: flex; flex-direction: column; padding: 25px; background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); gap: 12px;">
                         <div style="display: flex; flex-direction: row; border-bottom: 1px solid var(--color-border); padding-bottom: 12px;">
                             <p class="paragraph--black-bold">Notes</p>
                             <svg style="margin-left: auto;" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -349,6 +349,7 @@ function isToday(day) {
         border-radius: 8px; 
         padding: 20px;
         transition: border 0.2s;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }
 
     #unassigned-sections:hover {
@@ -365,6 +366,7 @@ function isToday(day) {
          border-radius: 8px; 
          padding: 20px;
          transition: border 0.2s;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }
 
     #unassigned-rooms:hover { 
@@ -379,7 +381,7 @@ function isToday(day) {
     border-radius: 8px;
     text-align: center;
     background-color: white;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
     }
 
     .calendar h2 {
