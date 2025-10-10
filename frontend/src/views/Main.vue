@@ -245,17 +245,17 @@ function logout() {
   border-bottom-left-radius: 8px;
 }
 
-.tab-btn.active {
+.tab-btn.active,
+.tab-btn.active:hover {
   background-color: var(--color-secondary);
   border-right: 4px solid var(--color-primary);
   color: var(--color-primary);
   font-weight: bold;
 }
 
-.tab-btn:hover {
+.tab-btn:not(.active):hover {
   background-color: var(--color-lightgray-hover);
-  transition: 0.1s ease-in-out;
-  
+  transition: background-color 0.1s ease-in-out;
 }
 
 /* Main content */

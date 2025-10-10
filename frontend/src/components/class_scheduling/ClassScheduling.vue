@@ -1,8 +1,68 @@
 <script setup>
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import axios from "axios"
+
+//#region 📘 FETCH SECTIONS
+const sections = ref([])
+
+const fetchSections = async () => {
+    try {
+        const res = await axios.get("http://localhost:3000/sections")
+        sections.value = res.data
+    } catch (err) {
+        console.error("Error fetching sections:", err)
+    }
+}
+
+// Group sections by "A.Y. YEAR – Semester"
+const groupedSections = computed(() => {
+    const groups = {}
+    const semesterMap = { 1: "1st Semester", 2: "2nd Semester" }
+
+    sections.value.forEach(sec => {
+        const semesterText = semesterMap[sec.semester] || sec.semester
+        const key = `A.Y. ${sec.academic_year} – ${semesterText}`
+        if (!groups[key]) groups[key] = []
+        groups[key].push(sec)
+    })
+
+    // Sort groups (latest A.Y. first, 2nd semester before 1st)
+    const sortedKeys = Object.keys(groups).sort((a, b) => {
+        const extract = str => str.match(/A\.Y\. (\d{4})-(\d{4}) – (.*)/)?.slice(1)
+        const [aYearStart,, aSem] = extract(a)
+        const [bYearStart,, bSem] = extract(b)
+
+        if (bYearStart !== aYearStart) return bYearStart - aYearStart
+
+        const semOrder = { "1st Semester": 1, "2nd Semester": 2 }
+        return semOrder[bSem] - semOrder[aSem]
+    })
+
+    const sortedGroups = {}
+    sortedKeys.forEach(key => {
+        sortedGroups[key] = groups[key]
+    })
+
+    return sortedGroups
+})
+
+onMounted(fetchSections)
+//#endregion
+
+//#region 🧭 ROUTER
+const router = useRouter()
+function goToPage(section) {
+    router.push({
+        path: `/main/class-scheduling/week-table`,
+        query: { data: JSON.stringify(section) }
+    })
+}
+//#endregion
 </script>
 
 <template>
-    <div id="container">
+    <div id="container" v-if="$route.path === '/main/class-scheduling'">
 
         <header>
             <svg height="100%" viewBox="0 0 114 114" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -37,7 +97,51 @@
             </div>
         </header>
 
+        <main>
+            <!-- Loop through grouped sections -->
+            <div v-for="(group, groupKey) in groupedSections" :key="groupKey">
+                <h3 style="margin: 0; margin-bottom: 24px;">{{ groupKey }}</h3>
+                
+                <!-- Group by course name -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto; gap: 2.5vw;">
+
+                    <!-- Group by course name -->
+                    <div v-for="course in [...new Set(group.map(sec => sec.course_name))]">
+                        <div style="display: grid; grid-template-columns: 50% 50%; padding-left: 24px; margin-bottom: 8px;">
+                            <label class="paragraph--gray" style="font-weight: 600;">{{ course }}</label> 
+                            <div style="display: grid; grid-template-columns: repeat(2, 1fr); text-align: center;">
+                                <label class="paragraph--gray" style="font-weight: 600;">Class No.</label>
+                                <label class="paragraph--gray" style="font-weight: 600;">Status</label>
+                            </div>
+                        </div>
+
+                        <!-- Section cards -->
+                        <div style="display: flex; 
+                                    flex-direction: column; 
+                                    background-color: white; 
+                                    border-top: 1px solid var(--color-border); 
+                                    border-left: 1px solid var(--color-border); 
+                                    border-right: 1px solid var(--color-border); 
+                                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);">
+                                    
+                            <div v-for="section in group.filter(sec => sec.course_name === course)"
+                                :key="section.section_id"
+                                class="card-content" 
+                                @click="goToPage(section)">
+                                <label>{{ section.section_format }}</label>
+                                <div style="display: grid; grid-template-columns: repeat(2, 1fr); text-align: center;">
+                                    <label>{{ section.student_count }}</label>
+                                    <label>■ Unset</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
     </div>
+
+    <router-view></router-view>
 </template>
 
 <style scoped>
@@ -53,5 +157,29 @@
         width: 100%;
         height: 72px;
         gap: 12px;
+        margin-bottom: 35px;
+    }
+
+    main {
+        display: flex;
+        flex-direction: column;
+        gap: 35px;
+    }
+
+    .card {
+        
+    }
+
+    .card-content {
+        display: grid; 
+        grid-template-columns: 50% 50%; 
+        padding: 12px 0; 
+        padding-left: 24px; 
+        border-bottom: 1px solid var(--color-border);
+        transition: all ease 0.3s;
+    }
+
+    .card-content:hover {
+        background-color: var( --color-secondary);
     }
 </style>

@@ -16,7 +16,10 @@ import Courses from '../components/masterlist/Courses.vue'
 import Subjects from '../components/masterlist/Subjects.vue'
 import Rooms from '../components/masterlist/Rooms.vue'
 
+// ClassScheduling
 import ClassScheduling from '../components/class_scheduling/ClassScheduling.vue'
+import WeekTable from '../components/class_scheduling/WeekTable.vue'
+
 import Timetables from '../components/timetables/TimeTables.vue'
 
 const routes = [
@@ -73,7 +76,20 @@ const routes = [
         ]
       },
 
-      { path: 'class-scheduling', name: 'ClassScheduling', component: ClassScheduling, meta: { title: 'COOR | Class Scheduling' } },
+      { 
+        path: 'class-scheduling', 
+        name: 'ClassScheduling', 
+        component: ClassScheduling, meta: { title: 'COOR | Class Scheduling' },
+        children: [
+          { 
+            path: 'week-table', 
+            name: 'WeekTable', 
+            component: WeekTable, 
+            meta: { title: 'COOR | Week Table' } 
+          }
+        ]
+      },
+
       { path: 'timetables', name: 'Timetables', component: Timetables, meta: { title: 'COOR | Timetables' } },
       
       { path: '', redirect: 'home' } // default tab
