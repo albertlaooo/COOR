@@ -27,18 +27,18 @@
         const q = searchQuery.value.toLowerCase()
         result = result.filter(subj =>
         subj.subject_code.toLowerCase().includes(q) ||
-        subj.name.toLowerCase().includes(q) ||
+        subj.subject_name.toLowerCase().includes(q) || // ✅ fixed here
         String(subj.units).includes(q) ||
-        String(subj.hours_week).includes(q) ||
+        String(subj.hours_week).toLowerCase().includes(q) || // ✅ safer lowercase check
         subj.room_type.toLowerCase().includes(q)
         )
     }
 
     // ↕️ Sort options
     if (sortValue.value === "name-asc") {
-        result.sort((a, b) => a.name.localeCompare(b.name))
+        result.sort((a, b) => a.subject_name.localeCompare(b.subject_name)) // ✅ fixed here
     } else if (sortValue.value === "name-desc") {
-        result.sort((a, b) => b.name.localeCompare(a.name))
+        result.sort((a, b) => b.subject_name.localeCompare(a.subject_name)) // ✅ fixed here
     } else if (sortValue.value === "units-asc") {
         result.sort((a, b) => Number(a.units) - Number(b.units))
     } else if (sortValue.value === "units-desc") {
@@ -339,7 +339,7 @@
         <transition name="fade">
             <div v-show="isVisibleSubjectModal" class="modal" @click.self="toggleSubjectModal('cancel')">
                <div class="modal-content">
-                    <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">Subject Information</h2>
+                    <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">{{ subjectTitle }}</h2>
 
                     <div style="display: flex; flex-direction: column; gap: 14px; width: 100%;">
                         <div>
@@ -388,7 +388,7 @@
 
                     <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
                         <button @click="toggleSubjectModal('cancel')" class="cancelBtn">Cancel</button>
-                        <button @click="subjectConfirm">Confirm</button>
+                        <button @click="subjectConfirm">{{ subjectButton }}</button>
                     </div>
                </div>
             </div>

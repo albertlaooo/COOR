@@ -6,9 +6,7 @@
     const router = useRouter()
 
     // DATA
-    const roomForms = ref([
-        { room_code: "", room_type: "", capacity: "" }
-    ])
+    const roomForms = ref([{ room_code: "", room_type: "" }])
 
     const isVisibleRoomModal = ref(false)
     const isVisibleNewSectionBtn = ref(true)
@@ -21,17 +19,14 @@
     const sortedRooms = computed(() => {
     let result = [...items.value]
 
-    // 🔍 Filter first (search)
     if (searchQuery.value.trim() !== "") {
         const q = searchQuery.value.toLowerCase()
         result = result.filter(room =>
         room.room_code.toLowerCase().includes(q) ||
-        room.room_type.toLowerCase().includes(q) ||
-        String(room.capacity).toLowerCase().includes(q)
+        room.room_type.toLowerCase().includes(q)
         )
     }
 
-    // ↕️ Sorting
     if (sortValue.value === "code-asc") {
         result.sort((a, b) => a.room_code.localeCompare(b.room_code, undefined, { numeric: true }))
     } else if (sortValue.value === "code-desc") {
@@ -40,10 +35,6 @@
         result.sort((a, b) => a.room_type.localeCompare(b.room_type))
     } else if (sortValue.value === "type-desc") {
         result.sort((a, b) => b.room_type.localeCompare(a.room_type))
-    } else if (sortValue.value === "capacity-asc") {
-        result.sort((a, b) => Number(a.capacity) - Number(b.capacity))
-    } else if (sortValue.value === "capacity-desc") {
-        result.sort((a, b) => Number(b.capacity) - Number(a.capacity))
     }
 
     return result
@@ -93,19 +84,16 @@
 
     /////////////////////////////// FETCH ROOMS ////////////////////////////
     const fetchRooms = async () => {
-    try {
-        const res = await axios.get("http://localhost:3000/rooms")
-
-        items.value = res.data.map(room => ({
+        try {
+            const res = await axios.get("http://localhost:3000/rooms")
+            items.value = res.data.map(room => ({
             room_id: room.room_id,
             room_code: room.room_code,
-            room_type: room.room_type,
-            capacity: room.capacity
-        }));
-
-    } catch (err) {
-        console.error("Error fetching rooms:", err)
-    }
+            room_type: room.room_type
+            }))
+        } catch (err) {
+            console.error("Error fetching rooms:", err)
+        }
     }
 
     onMounted(fetchRooms);
@@ -119,46 +107,19 @@
     }
 
     const roomConfirm = async () => {
-
         if (roomHandler.value === "add") {
-            try {
-                await axios.post("http://localhost:3000/add-room", {
-                    rooms: roomForms.value
-                });
-
-                alert("Rooms added successfully!")
-                fetchRooms()
-                setTimeout(() => resetInputs(), 100);
-                isVisibleRoomModal.value = false
-
-                } catch (error) {
-                    console.error("Error:", error)
-                    alert("Failed to add rooms.")
-            }
+            await axios.post("http://localhost:3000/add-room", {
+            rooms: roomForms.value
+            })
+        } else if (roomHandler.value === "update") {
+            await axios.put(`http://localhost:3000/update-room/${selectedRoom.value.room_id}`, {
+            room_code: roomForms.value[0].room_code,
+            room_type: roomForms.value[0].room_type
+            })
         }
 
-        else if(roomHandler.value === 'update'){
-            try {
-                const res = await axios.put(`http://localhost:3000/update-room/${selectedRoom.value.room_id}`, {
-                    room_code: roomForms.value[0].room_code,
-                    room_type: roomForms.value[0].room_type,
-                    capacity: roomForms.value[0].capacity
-                });
-
-            console.log(res.data.message);
-            alert("Room updated successfully!");
-            
-            fetchRooms();
-            selectedRoom.value = null;
-            toggleRoomModal('cancel');
-
-            // Reset Inputs
-            setTimeout(() => resetInputs(), 100);
-            } catch (error) {
-                console.error("Error:", error);
-                alert("Failed to update room.");
-            }
-        }
+        fetchRooms()
+        toggleRoomModal("cancel")
     }
 
     function addRoomSection() {
@@ -168,6 +129,13 @@
             capacity: ""
         })
     }
+
+    function RemoveRoomSection() {
+        if (roomForms.value.length > 1) {
+            roomForms.value.pop()
+        }
+    }
+
 
     //////////////////////// Delete Room /////////////////////////
     const deleteRoom = async (id) => {
@@ -276,7 +244,6 @@
                     <tr>
                         <th>Room Code</th>
                         <th>Room Type</th>
-                        <th>Capacity</th>
                         <th style="width: 130px">Actions</th>
                     </tr>
                 </thead>
@@ -284,7 +251,6 @@
                     <tr v-for="item in sortedRooms" :key="item.id">
                     <td>{{ item.room_code }}</td>
                     <td>{{ item.room_type }}</td>
-                    <td>{{ item.capacity }}</td>
                     <td>
                         <div style="display: flex; flex-direction: row; gap: 5px; align-items: center; width: 130px;">
                             <button @click="deleteRoom(item.room_id)" class="outlineBtn" style="font-size: 1.2rem; padding: 3px 6px;">
@@ -307,7 +273,7 @@
                     <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">{{ roomTitle }}</h2>
                         
                     <div>
-                        <div v-for="(form, index) in roomForms" :key="index" style="display: flex; flex-direction: row; gap: 14px; width: 100%; margin-bottom: 12px;">
+                        <div v-for="(form, index) in roomForms" :key="index" style="display: flex; gap: 14px; width: 100%; margin-bottom: 12px;">
                             <div style="flex: 1;">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Room Code</p>
                                 <input v-model="form.room_code" />
@@ -316,19 +282,23 @@
                             <div style="flex: 1;">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Room Type</p>
                                 <select v-model="form.room_type" style="width: 100%;">
-                                    <option value="Classroom">Classroom</option>
-                                    <option value="Computer Lab">Computer Lab</option>
-                                    <option value="Audio-Visual Room">Audio-Visual Room</option>
+                                <option value="Classroom">Classroom</option>
+                                <option value="Computer Lab">Computer Lab</option>
+                                <option value="Audio-Visual Room">Audio-Visual Room</option>
                                 </select>
-                            </div>
-
-                            <div style="flex: 1;">
-                                <p class="paragraph--black-bold" style="line-height: 1.8;">Capacity</p>
-                                <input v-model="form.capacity" />
                             </div>
                         </div>
 
-                        <button v-show="isVisibleNewSectionBtn" @click="addRoomSection">+ New Section</button>
+                        <div v-show="isVisibleNewSectionBtn" style="display: flex; flex-direction: row; gap: 6px; width: fit-content;">
+                            <svg @click="addRoomSection" style="margin-left: auto;" width="32" height="32" viewBox="0 0 33 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect width="33" height="32" rx="4" fill="#0785D4"/>
+                                <path d="M17.0228 11.1006V20.7433M12.3677 15.9219H21.6779" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <svg @click="RemoveRoomSection" width="32" height="32" viewBox="0 0 33 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <rect width="33" height="32" rx="4" fill="#A83838"/>
+                                <path d="M25 17C25 17.5333 24.7667 18 24.5 18H9.5C9.23333 18 9 17.5333 9 17V15C9 14.4667 9.23333 14 9.5 14H24.5C24.7667 14 25 14.4667 25 15V17Z" fill="white"/>
+                            </svg>
+                        </div>
                     </div>
 
                     <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
@@ -432,7 +402,7 @@
         height: auto;
         max-height: 90vh;
         align-items: center;
-        width: 720px;
+        width: auto;
         padding-top: 30px;
         padding-bottom: 30px;
         padding-left: 50px;

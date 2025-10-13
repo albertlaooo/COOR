@@ -411,32 +411,37 @@ const sectionConfirm = async () => {
     ) {
         if (sectionHandler.value === 'add') {
             try {
+                const selectedCourse = coursesDB.value.find(
+                    crse => crse.course_name.toLowerCase() === course.value.toLowerCase().trim()
+                );
+
                 const res = await axios.post("http://localhost:3000/add-section", {
+                    course_id: selectedCourse.course_id,   // NEW
                     course_name: course.value,
                     year: year.value,
                     semester: semester.value,
                     academic_year: academicYear.value,
                     student_count: studentsCount.value,
                     section_format: sectionFormat.value
-                })
+                });
 
                 if (res.data.success) {
-                    console.log("Section added successfully!")
+                    console.log("Section added successfully!");
                 } else {
-                    console.log(res.data.message || "Failed to add section.")
+                    console.log(res.data.message || "Failed to add section.");
                 }
             } catch (err) {
-                console.error(err)
+                console.error(err);
             }
 
-            fetchSections()
-            toggleSectionModal()
+            fetchSections();
+            toggleSectionModal();
         } else if (sectionHandler.value === 'update') {
-            alert("updated")
+            alert("updated");
         }
     } else {
-        showErrorInput.value = false
-        setTimeout(() => { showErrorInput.value = true }, 0)
+        showErrorInput.value = false;
+        setTimeout(() => { showErrorInput.value = true }, 0);
     }
 }
 

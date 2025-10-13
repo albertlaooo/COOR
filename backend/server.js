@@ -87,6 +87,7 @@ db.serialize(() => {
     db.run(`
       CREATE TABLE IF NOT EXISTS Sections (
             section_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            course_id INTEGER,
             course_name TEXT NOT NULL,
             year INTEGER NOT NULL,
             semester INTEGER NOT NULL,
@@ -157,13 +158,26 @@ db.serialize(() => {
         CREATE TABLE IF NOT EXISTS Rooms (
           room_id INTEGER PRIMARY KEY AUTOINCREMENT,
           room_code TEXT NOT NULL UNIQUE,
-          room_type TEXT NOT NULL,
-          capacity INTEGER NOT NULL
+          room_type TEXT NOT NULL
         );
     `);
 
-            
-
+    db.run(`
+        CREATE TABLE IF NOT EXISTS ScheduleAssignments (
+          schedule_assignment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          section_id INTEGER,
+          teacher_id INTEGER,
+          room_id INTEGER,
+          subject_id INTEGER,
+          day_of_week VARCHAR(20),
+          start_time INTEGER,
+          end_time INTEGER,
+          FOREIGN KEY (section_id) REFERENCES Sections(section_id) ON DELETE SET NULL,
+          FOREIGN KEY (teacher_id) REFERENCES Teachers(teacher_id) ON DELETE SET NULL,
+          FOREIGN KEY (subject_id) REFERENCES Subjects(subject_id) ON DELETE SET NULL,
+          FOREIGN KEY (room_id) REFERENCES Rooms(room_id) ON DELETE SET NULL
+        );
+    `);
 });
 
 
@@ -527,6 +541,7 @@ app.delete("/delete-teacher-availability/:teacherId", (req, res) => {
 // CREATE Section
 app.post("/add-section", (req, res) => {
   const {
+    course_id,        // NEW
     course_name,
     year,
     semester,
@@ -536,6 +551,7 @@ app.post("/add-section", (req, res) => {
   } = req.body;
 
   if (
+    !course_id ||          // REQUIRED now
     !course_name ||
     !year ||
     !semester ||
@@ -549,13 +565,13 @@ app.post("/add-section", (req, res) => {
   }
 
   const sql = `
-    INSERT INTO Sections (course_name, year, semester, student_count, academic_year, section_format)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO Sections (course_id, course_name, year, semester, student_count, academic_year, section_format)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
 
   db.run(
     sql,
-    [course_name, year, semester, student_count || 0, academic_year, section_format],
+    [course_id, course_name, year, semester, student_count || 0, academic_year, section_format],
     function (err) {
       if (err) {
         console.error("Error inserting section:", err.message);
@@ -894,6 +910,7 @@ app.get("/courses", (req, res) => {
       c.course_name,
       c.course_code,
       c.course_image,
+      c.department_id,
       COUNT(cs.subject_id) AS total_subjects,
       COALESCE(SUM(s.units), 0) AS total_units
     FROM Courses c
@@ -1032,14 +1049,15 @@ app.get("/courses/:id/subjects", (req, res) => {
       cs.subject_id,
       s.subject_name,
       s.subject_code,
+      s.lecture,
+      s.laboratory,
       cs.year,
       cs.semester
     FROM CourseSubjects cs
     JOIN Subjects s ON cs.subject_id = s.subject_id
+    LEFT JOIN ScheduleAssignments sa ON cs.subject_id = sa.subject_id
     WHERE cs.course_id = ?
-    ORDER BY
-      CAST(cs.year AS INTEGER),
-      CAST(cs.semester AS INTEGER)
+    ORDER BY CAST(cs.year AS INTEGER), CAST(cs.semester AS INTEGER)
   `;
 
   db.all(sql, [courseId], (err, rows) => {
@@ -1050,6 +1068,7 @@ app.get("/courses/:id/subjects", (req, res) => {
     res.json(rows);
   });
 });
+
 
 // API route to remove a subject from a course (delete from the junction table)
 app.delete("/remove-course-subject", (req, res) => {
@@ -1148,13 +1167,13 @@ app.post("/add-room", (req, res) => {
     return res.status(400).json({ success: false, message: "No rooms provided" });
   }
 
-  const sql = `INSERT INTO Rooms (room_code, room_type, capacity) VALUES (?, ?, ?)`;
+  const sql = `INSERT INTO Rooms (room_code, room_type) VALUES (?, ?)`;
   const stmt = db.prepare(sql);
 
   try {
     for (const room of rooms) {
-      if (!room.room_code || !room.room_type || !room.capacity) continue;
-      stmt.run([room.room_code, room.room_type, room.capacity]);
+      if (!room.room_code || !room.room_type) continue;
+      stmt.run([room.room_code, room.room_type]);
     }
     stmt.finalize();
 
@@ -1178,15 +1197,15 @@ app.get("/rooms", (req, res) => {
 // UPDATE room
 app.put("/update-room/:id", (req, res) => {
   const { id } = req.params;
-  const { room_code, room_type, capacity } = req.body;
+  const { room_code, room_type } = req.body;
 
   const sql = `
     UPDATE Rooms
-    SET room_code = ?, room_type = ?, capacity = ?
+    SET room_code = ?, room_type = ?
     WHERE room_id = ?
   `;
 
-  db.run(sql, [room_code, room_type, capacity, id], function (err) {
+  db.run(sql, [room_code, room_type, id], function (err) {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -1204,6 +1223,60 @@ app.delete("/rooms/:id", (req, res) => {
     res.json({ message: "Room deleted successfully" });
   });
 });
+
+
+/*////////////////////////////////////////////////////////////////////////
+/////////////////////////  ScheduleAssignment  ///////////////////////////
+////////////////////////////////////////////////////////////////////////*/ 
+// Add schedule
+app.post("/add-schedule", async (req, res) => {
+  const db = await dbPromise;
+  const { section_id, day_of_week, times } = req.body;
+  // times = [{ start: 420, end: 540 }, { start: 600, end: 780 }, ...]
+
+  try {
+    // Remove old schedule for that day/section (to refresh)
+    await db.run(`DELETE FROM ScheduleAssignments WHERE section_id = ? AND day_of_week = ?`, [section_id, day_of_week]);
+
+    // Insert new time slots
+    const insertStmt = await db.prepare(`
+      INSERT INTO ScheduleAssignments (section_id, day_of_week, start_time, end_time)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    for (const t of times) {
+      await insertStmt.run(section_id, day_of_week, t.start, t.end);
+    }
+    await insertStmt.finalize();
+
+    res.json({ success: true, message: "Schedule saved successfully!" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: "Database error" });
+  }
+});
+
+// Get schedule
+app.get("/get-schedule/:section_id/:day_of_week", async (req, res) => {
+  const db = await dbPromise;
+  const { section_id, day_of_week } = req.params;
+
+  try {
+    const rows = await db.all(
+      `SELECT start_time, end_time FROM ScheduleAssignments WHERE section_id = ? AND day_of_week = ? ORDER BY start_time ASC`,
+      [section_id, day_of_week]
+    );
+
+    res.json({
+      success: true,
+      times: rows.map(r => ({ start: r.start_time, end: r.end_time }))
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: "Database error" });
+  }
+});
+
 
 // Start server
 app.listen(3000, () => {

@@ -307,6 +307,8 @@
                 });
             });
             }
+
+            console.log(res)
         } catch (err) {
             console.error("Error fetching courses:", err);
         }
@@ -317,6 +319,7 @@
     async function fetchCoursesOnDepartment(){
         await fetchCourses();
         fetchedCourses.value = coursesDB.value.filter(c => c.department_id === selectedDept.value.id);
+        
     }
     
     /////////////////////////////// SEARCH FILTER COURSES ////////////////////////////

@@ -344,7 +344,7 @@ const courseConfirm = async () => {
 
 function toggleCourseModal(which) {
     if (which === 'add') {
-        courseTitle.value = 'Department Information'
+        courseTitle.value = 'Course Information'
         courseButton.value = 'Confirm'
         courseHandler.value = 'add'
         isVisibleCourseModal.value = !isVisibleCourseModal.value
