@@ -184,6 +184,18 @@ button:disabled {
   transition: background-color 0.1s;
 }
 
+.delete-btn {
+  background-color: #b84343; 
+  border-color: #b84343;
+  transition: background-color 0.3s;
+}
+
+.delete-btn:hover {
+  background-color: #973131; 
+  border-color: #A83838;
+  transition: background-color 0.3s;  
+}
+
 input {
   background-color: #ffffff;
   color: black;
@@ -264,6 +276,10 @@ select {
 .error-input-border {
   border: 2px solid red !important;
   animation: scalePulse 0.3s ease;
+}
+
+.disabled-input-bg {
+  background-color: var(--color-lightgray);
 }
 
 

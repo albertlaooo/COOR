@@ -13,6 +13,7 @@ function backBtn() {
 //#region ⚙️ STATE VARIABLES
 const isVisibleMoveUpModal = ref(false)
 const isVisibleAddSection = ref(false)
+const isDeleteSectionBtnVisible = ref(false)
 const passwordConfirmation = ref("")
 const selectedGroupKey = ref("")
 
@@ -237,7 +238,7 @@ async function moveUpBtn() {
             semester,
         })
 
-        // Advance each record
+        // Process each record
         for (const record of sectionsToMove) {
             let newSemester = record.semester
             let newAcademicYear = currentAcademicYear
@@ -257,19 +258,24 @@ async function moveUpBtn() {
                 }
             }
 
+            // Delete the old record (we always delete)
+            await axios.delete(`http://localhost:3000/sections/${record.section_id}`)
+
+            // Determine the next placement
             if (!deleteAfterArchive) {
                 // Pass the course_name field directly (no section object)
                 newSectionFormat = recalculateSectionFormat(record.course_name, newYear)
-            }
 
-            if (deleteAfterArchive) {
-                await axios.delete(`http://localhost:3000/sections/${record.section_id}`)
-            } else {
-                await axios.put(`http://localhost:3000/sections/advance/${record.section_id}`, {
-                    new_academic_year: newAcademicYear,
-                    new_semester: newSemester,
-                    new_year: newYear,
-                    new_section_format: newSectionFormat,
+                 // Create new section
+                await axios.post(`http://localhost:3000/add-section`, {
+                    course_id: record.course_id,
+                    course_name: record.course_name,
+                    year: newYear,
+                    semester: newSemester,
+                    academic_year: newAcademicYear,
+                    student_count: record.student_count,
+                    section_format: newSectionFormat,
+                    schedule_status: "Unset",
                 })
             }
         }
@@ -295,11 +301,9 @@ const semester = ref('')
 const academicYear = ref('')
 const studentsCount = ref(0)
 const sectionFormat = ref('')
-const sectionHandler = ref()
+const selectedSection = ref(null)
 
 // UI
-const sectionTitle = ref()
-const sectionButton = ref()
 const courseWrapper = ref(null)
 const inputFocused = ref(false)
 const showErrorInput = ref(false)
@@ -366,21 +370,29 @@ const handleStudentCountInput = (e) => {
     studentsCount.value = value ? parseInt(value) : 0
 }
 
-function toggleSectionModal(which) {
+function toggleSectionModal(which, section) {
     isVisibleAddSection.value = !isVisibleAddSection.value
 
     if (which === 'add') {
-        sectionTitle.value = 'Section Information'
-        sectionButton.value = 'Confirm'
-        sectionHandler.value = 'add'
+
     } else if (which === 'update') {
-        sectionTitle.value = 'Update Information'
-        sectionButton.value = 'Update'
-        sectionHandler.value = 'update'
+
+        // Data fetch
+        course.value = section.course_name
+        year.value = section.year
+        semester.value = section.semester
+        academicYear.value = section.academic_year
+        studentsCount.value = section.student_count
+        selectedSection.value = section
+        
+        // Disable Buttons
+
+        isDeleteSectionBtnVisible.value = true
     } else if ('cancel') {
         resetInputs()
         showErrorInput.value = false
     }
+
 }
 
 function resetInputs() {
@@ -391,6 +403,8 @@ function resetInputs() {
         academicYear.value = ''
         studentsCount.value = 0
         sectionFormat.value = ''
+        isDeleteSectionBtnVisible.value = false
+        selectedSection.value = null
     }, 100)
 }
 
@@ -400,6 +414,27 @@ const courseExists = computed(() =>
     )
 )
 
+const deleteSectionBtn = async () => {
+    if (!confirm(`Are you sure you want to delete section: ${selectedSection.value.course_name}?`)) {
+        return;
+    }
+
+    try {
+        // DELETE SECTION
+        await axios.delete(`http://localhost:3000/sections/${selectedSection.value.section_id}`);
+
+        // UI Update (Refresh Data)
+        await fetchSections()
+        isVisibleAddSection.value = !isVisibleAddSection.value
+        resetInputs()
+        
+    } catch (err) {
+        console.error("Error during section deletion", err);
+        // Mas specific na error message
+        alert("Failed to secton.");
+    }
+}
+
 const sectionConfirm = async () => {
     if (
         course.value &&
@@ -408,37 +443,34 @@ const sectionConfirm = async () => {
         semester.value &&
         academicYear.value &&
         studentsCount.value !== 0
-    ) {
-        if (sectionHandler.value === 'add') {
-            try {
-                const selectedCourse = coursesDB.value.find(
-                    crse => crse.course_name.toLowerCase() === course.value.toLowerCase().trim()
-                );
+        ) {
+        try {
+            const selectedCourse = coursesDB.value.find(
+                crse => crse.course_name.toLowerCase() === course.value.toLowerCase().trim()
+            );
 
-                const res = await axios.post("http://localhost:3000/add-section", {
-                    course_id: selectedCourse.course_id,   // NEW
-                    course_name: course.value,
-                    year: year.value,
-                    semester: semester.value,
-                    academic_year: academicYear.value,
-                    student_count: studentsCount.value,
-                    section_format: sectionFormat.value
-                });
+            const res = await axios.post("http://localhost:3000/add-section", {
+                course_id: selectedCourse.course_id,   // NEW
+                course_name: course.value,
+                year: year.value,
+                semester: semester.value,
+                academic_year: academicYear.value,
+                student_count: studentsCount.value,
+                section_format: sectionFormat.value,
+                schedule_status: "Unset",
+            });
 
-                if (res.data.success) {
-                    console.log("Section added successfully!");
-                } else {
-                    console.log(res.data.message || "Failed to add section.");
-                }
-            } catch (err) {
-                console.error(err);
+            if (res.data.success) {
+                console.log("Section added successfully!");
+            } else {
+                console.log(res.data.message || "Failed to add section.");
             }
-
-            fetchSections();
-            toggleSectionModal();
-        } else if (sectionHandler.value === 'update') {
-            alert("updated");
+        } catch (err) {
+            console.error(err);
         }
+
+        fetchSections();
+        toggleSectionModal();
     } else {
         showErrorInput.value = false;
         setTimeout(() => { showErrorInput.value = true }, 0);
@@ -530,6 +562,14 @@ watch([course, year, semester, coursesDB], () => {
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 35px;">
+                    <!-- 🟢 Show message if no sections -->
+                    <div v-if="!Object.keys(groupedSections).length" 
+                        style="display: flex; justify-content: center; align-items: center; height: 60vh;">
+                        <p style="text-align: center; color: black; font-size: 18px;">
+                            No sections yet.
+                        </p>
+                    </div>
+
                     <!-- Loop through each A.Y. + Semester group -->
                     <div
                         v-for="(sections, groupKey) in groupedSections"
@@ -564,6 +604,7 @@ watch([course, year, semester, coursesDB], () => {
                             v-for="section in sections"
                             :key="section.section_id"
                             class="card"
+                            @click="toggleSectionModal('update', section)"
                             >
                             <p class="paragraph--black-bold">{{ section.section_format }}</p>
                             <p>{{ section.course_name }}</p>
@@ -599,6 +640,14 @@ watch([course, year, semester, coursesDB], () => {
                     <select style="margin-left: 0px; padding: 6px; padding-left: 15px;">
                         <option value="">Sort by</option>
                     </select>
+                </div>
+
+                <!-- 🟢 Show message if no archived sections -->
+                <div v-if="!Object.keys(groupedArchivedSections).length" 
+                    style="display: flex; justify-content: center; align-items: center; height: 60vh;">
+                    <p style="text-align: center; color: black; font-size: 18px;">
+                        No archived sections yet.
+                    </p>
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 35px;">
@@ -666,7 +715,7 @@ watch([course, year, semester, coursesDB], () => {
 
                             <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto; margin-top: 20px; margin-bottom: 4px;">
                                 <button @click="cancelMoveUpBtn" class="cancelBtn">Cancel</button>
-                                <button style="background-color: #A83838; border-color: #A83838;" @click="moveUpBtn">Move Up</button>
+                                <button class="delete-btn" @click="moveUpBtn">Move Up</button>
                             </div>
                         </div>
                     </transition>
@@ -679,7 +728,7 @@ watch([course, year, semester, coursesDB], () => {
         <transition name="fade">
             <div v-show="isVisibleAddSection" class="modal" @click.self="toggleSectionModal('cancel')">
                <div class="modal-content-add-subject">
-                    <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">{{ sectionTitle }}</h2>
+                    <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">Section Information</h2>
 
                     <div style="display: flex; flex-direction: column; width: 100%; gap: 14px;">
                         <!-- Courses -->
@@ -688,6 +737,7 @@ watch([course, year, semester, coursesDB], () => {
                             <div style="display: flex; flex-direction: row; flex-wrap: nowrap; gap: 10px; align-items: center;">
                                 <div style="position: relative; width: 100%;">
                                     <input v-model="course" 
+                                            :disabled="isDeleteSectionBtnVisible"
                                             @focus="inputFocused = true" 
                                             placeholder="Search here"
                                             :class="{ 'error-input-border': showErrorInput && (course.trim() === '' || !courseExists) }"></input>
@@ -707,14 +757,14 @@ watch([course, year, semester, coursesDB], () => {
                                         </div>
                                     </div>
                                 </div>
-                                <p class="paragraph--gray" @click="notListed" style="font-weight: 600; color: #6799C8; white-space: nowrap; text-decoration: underline; text-underline-offset: 4px; cursor: pointer;">Not listed?</p>
+                                <p class="paragraph--gray" v-show="!isDeleteSectionBtnVisible" @click="notListed" style="font-weight: 600; color: #6799C8; white-space: nowrap; text-decoration: underline; text-underline-offset: 4px; cursor: pointer;">Not listed?</p>
                             </div>
                         </div>
 
                         <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto; column-gap: 25px; row-gap: 14px;">
                             <div>
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Year</p>
-                                <select v-model="year" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && year.trim() === '' }">
+                                <select v-model="year" :disabled="isDeleteSectionBtnVisible" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && year.trim() === '' }">
                                     <option value="1">1st Year</option>
                                     <option value="2">2nd Year</option>
                                     <option value="3">3rd Year</option>
@@ -729,7 +779,7 @@ watch([course, year, semester, coursesDB], () => {
                             
                             <div>
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Semester</p>
-                                <select v-model="semester" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && semester.trim() === '' }">
+                                <select v-model="semester" :disabled="isDeleteSectionBtnVisible" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && semester.trim() === '' }">
                                     <option value="1">1st Semester</option>
                                     <option value="2">2nd Semester</option>
                                 </select>
@@ -737,7 +787,7 @@ watch([course, year, semester, coursesDB], () => {
 
                             <div>
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Academic Year</p>
-                                <select v-model="academicYear" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && academicYear.trim() === '' }">
+                                <select v-model="academicYear" :disabled="isDeleteSectionBtnVisible" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && academicYear.trim() === '' }">
                                     <option 
                                         v-for="academicYear in academicYears" 
                                         :key="academicYear.value" 
@@ -749,7 +799,7 @@ watch([course, year, semester, coursesDB], () => {
 
                             <div>
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Students Count</p>
-                                <input :value="studentsCount" @input="handleStudentCountInput" inputmode="numeric" pattern="[0-9]*" :class="{ 'error-input-border': showErrorInput && studentsCount === 0 }"></input>
+                                <input :value="studentsCount" :disabled="isDeleteSectionBtnVisible" @input="handleStudentCountInput" inputmode="numeric" pattern="[0-9]*" :class="{ 'error-input-border': showErrorInput && studentsCount === 0 }"></input>
                             </div>
 
 
@@ -758,10 +808,11 @@ watch([course, year, semester, coursesDB], () => {
                         
                     </div>
 
-                    <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
-                        <button @click="toggleSectionModal('cancel')" class="cancelBtn">Cancel</button>
-                        <button @click="sectionConfirm">{{ sectionButton }}</button>
-                    </div>
+                        <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
+                            <button @click="toggleSectionModal('cancel')" class="cancelBtn">Cancel</button>
+                            <button v-show="!isDeleteSectionBtnVisible" @click="sectionConfirm">Confirm</button>
+                            <button v-show="isDeleteSectionBtnVisible" @click="deleteSectionBtn()" class="delete-btn">Delete</button>
+                        </div>
                </div>
             </div>
         </transition>

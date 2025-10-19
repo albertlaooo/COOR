@@ -1,19 +1,23 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, watch, onMounted } from 'vue'
+import { useRouter,useRoute  } from 'vue-router'
 import axios from "axios"
 
-//#region 📘 FETCH SECTIONS
+//#region 🧱 REFS & STATE
 const sections = ref([])
+//#endregion
 
+//#region 📘 FETCH SECTIONS
 const fetchSections = async () => {
     try {
         const res = await axios.get("http://localhost:3000/sections")
         sections.value = res.data
+        console.log(sections.value)
     } catch (err) {
         console.error("Error fetching sections:", err)
     }
 }
+
 
 // Group sections by "A.Y. YEAR – Semester"
 const groupedSections = computed(() => {
@@ -47,17 +51,28 @@ const groupedSections = computed(() => {
     return sortedGroups
 })
 
-onMounted(fetchSections)
+onMounted(() => {
+    fetchSections()
+})
 //#endregion
 
 //#region 🧭 ROUTER
 const router = useRouter()
+const route = useRoute()
 function goToPage(section) {
     router.push({
         path: `/main/class-scheduling/week-table`,
         query: { data: JSON.stringify(section) }
     })
 }
+
+// refetch when route changes
+watch(
+  () => route.fullPath, // or route.name
+  () => {
+    fetchSections()
+  }
+)
 //#endregion
 </script>
 
@@ -98,6 +113,14 @@ function goToPage(section) {
         </header>
 
         <main>
+            <!-- 🟢 Show this if there are no sections -->
+            <div v-if="!Object.keys(groupedSections).length" 
+                style="display: flex; justify-content: center; align-items: center; height: 60vh;">
+                <p style="text-align: center; color: black; font-size: 18px;">
+                    No sections yet.
+                </p>
+            </div>
+
             <!-- Loop through grouped sections -->
             <div v-for="(group, groupKey) in groupedSections" :key="groupKey">
                 <h3 style="margin: 0; margin-bottom: 24px;">{{ groupKey }}</h3>
@@ -119,6 +142,7 @@ function goToPage(section) {
                         <div style="display: flex; 
                                     flex-direction: column; 
                                     background-color: white; 
+                                    border-radius: 6px;
                                     border-top: 1px solid var(--color-border); 
                                     border-left: 1px solid var(--color-border); 
                                     border-right: 1px solid var(--color-border); 
@@ -131,7 +155,23 @@ function goToPage(section) {
                                 <label>{{ section.section_format }}</label>
                                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); text-align: center;">
                                     <label>{{ section.student_count }}</label>
-                                    <label>■ Unset</label>
+                                        <label>
+                                        <span
+                                            :style="{
+                                            color:
+                                                section.schedule_status === 'Unset'
+                                                ? 'red'
+                                                : section.schedule_status === 'Complete'
+                                                ? 'green'
+                                                : section.schedule_status === 'Partially Set'
+                                                ? 'gold'
+                                                : 'black'
+                                            }"
+                                        >
+                                            ■
+                                        </span>
+                                        {{ section.schedule_status }}
+                                    </label>
                                 </div>
                             </div>
                         </div>
