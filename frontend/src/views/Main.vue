@@ -1,4 +1,5 @@
 <script setup>
+import { CanceledError } from 'axios'
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -16,6 +17,7 @@ const sidebarBtn = () => {
 
 const settings = () => {
   settingsRotated.value = !settingsRotated.value
+  isSettingsModalVisible.value = !isSettingsModalVisible.value
 }
 
 const tabs = [
@@ -28,9 +30,39 @@ const tabs = [
 function logout() {
   // Save login
   localStorage.setItem('loggedIn', 'false');
+  isSettingsModalVisible.value = false
   router.push('/')
 }
 
+// Navbar
+const isSettingsModalVisible = ref(false)
+const isChangePasswordModalVisible = ref(false)
+const showCurrentPassword = ref(false)
+const showNewPassword = ref(false)
+const showConfirmNewPassword = ref(false)
+
+const currentPassword = ref('')
+const newPassword = ref('')
+const confirmNewPassword = ref('')
+
+function changePasswordBtn() {
+  toggleChangePasswordModal()
+  isSettingsModalVisible.value = false
+}
+
+function changePasswordConfirm() {
+  
+}
+
+function toggleChangePasswordModal(){
+  isChangePasswordModalVisible.value = !isChangePasswordModalVisible.value
+
+  setTimeout(() => {
+    currentPassword.value = '';
+    newPassword.value = '';
+    confirmNewPassword.value = '';
+  }, 100);
+}
 </script>
 
 <template>
@@ -161,22 +193,134 @@ function logout() {
       <!-- Navbar -->
       <header class="navbar">
         
-        <div style="display: flex; flex-direction: row; align-items: center; margin-left: auto;">
-          <svg width="46" height="46" viewBox="0 0 66 64" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <ellipse cx="33.0045" cy="32" rx="32.2272" ry="32" fill="#D9D9D9"/>
-            <path d="M32.501 32.0007C30.4238 32.0007 28.6457 31.1847 27.1665 29.5527C25.6873 27.9208 24.9477 25.959 24.9477 23.6673C24.9477 21.3757 25.6873 19.4138 27.1665 17.7819C28.6457 16.15 30.4238 15.334 32.501 15.334C34.5781 15.334 36.3563 16.15 37.8354 17.7819C39.3146 19.4138 40.0542 21.3757 40.0542 23.6673C40.0542 25.959 39.3146 27.9208 37.8354 29.5527C36.3563 31.1847 34.5781 32.0007 32.501 32.0007ZM17.3944 48.6673V42.834C17.3944 41.6534 17.6698 40.5684 18.2206 39.5788C18.7713 38.5892 19.5031 37.834 20.4157 37.3132C22.367 36.2368 24.3497 35.4295 26.3639 34.8913C28.3781 34.3531 30.4238 34.084 32.501 34.084C34.5781 34.084 36.6238 34.3531 38.638 34.8913C40.6522 35.4295 42.6349 36.2368 44.5862 37.3132C45.4989 37.834 46.2306 38.5892 46.7813 39.5788C47.3321 40.5684 47.6075 41.6534 47.6075 42.834V48.6673H17.3944ZM21.1711 44.5007H43.8308V42.834C43.8308 42.452 43.7443 42.1048 43.5712 41.7923C43.3981 41.4798 43.1699 41.2368 42.8867 41.0632C41.1872 40.1257 39.472 39.4225 37.741 38.9538C36.0101 38.485 34.2634 38.2507 32.501 38.2507C30.7385 38.2507 28.9918 38.485 27.2609 38.9538C25.5299 39.4225 23.8147 40.1257 22.1152 41.0632C21.832 41.2368 21.6038 41.4798 21.4307 41.7923C21.2576 42.1048 21.1711 42.452 21.1711 42.834V44.5007ZM32.501 27.834C33.5395 27.834 34.4286 27.426 35.1682 26.61C35.9078 25.7941 36.2776 24.8132 36.2776 23.6673C36.2776 22.5215 35.9078 21.5406 35.1682 20.7246C34.4286 19.9086 33.5395 19.5007 32.501 19.5007C31.4624 19.5007 30.5733 19.9086 29.8337 20.7246C29.0941 21.5406 28.7243 22.5215 28.7243 23.6673C28.7243 24.8132 29.0941 25.7941 29.8337 26.61C30.5733 27.426 31.4624 27.834 32.501 27.834Z" fill="#1D1B20"/>
-          </svg>
-
-          <div style="display: flex; flex-direction: column; margin-left: 10px; margin-right: 45px;">
-            <label style="font-weight: 600; font-size: 1rem; color: black; line-height: 1.2;">Mud Bdiwee</label>
-            <small >Coordinator</small>
-          </div>
-
-          <svg @click="settings" :style="{ transform: settingsRotated ? 'rotate(360deg)' : 'rotate(0deg)', transition: 'transform 0.3s' }" width="30" height="30" viewBox="0 0 36 37" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <div class="navbar-elements">
+          <svg class="svg-icon" style="width: 26px; height: 26px;vertical-align: middle;fill: currentColor;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M618.666667 874.666667a106.666667 106.666667 0 0 1-213.333334 0H85.333333c-36.650667 0-56.256-43.178667-32.106666-70.762667l107.136-122.453333C176.853333 662.613333 192 622.293333 192 597.269333V362.666667C192 185.941333 335.274667 42.666667 512 42.666667c176.725333 0 320 143.274667 320 320v234.602666c0 25.066667 15.146667 65.322667 31.637333 84.181334l107.136 122.453333C994.922667 831.488 975.317333 874.666667 938.666667 874.666667H618.666667z m180.757333-137.024C769.28 703.232 746.666667 643.008 746.666667 597.269333V362.666667c0-129.6-105.066667-234.666667-234.666667-234.666667s-234.666667 105.066667-234.666667 234.666667v234.602666c0 45.696-22.656 105.984-52.757333 140.373334L179.349333 789.333333h665.28l-45.226666-51.690666z"  /></svg>
+          <svg @click="settings" :style="{ transform: settingsRotated ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.4s' }" width="30" height="30" viewBox="0 0 36 37" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M4.02943 23.2874L6.95643 28.3511C7.15076 28.687 7.47052 28.9319 7.84541 29.0321C8.2203 29.1323 8.61962 29.0795 8.95558 28.8853L10.9986 27.7057C11.8475 28.3745 12.7856 28.9233 13.772 29.3331V31.6718C13.772 32.0599 13.9262 32.4322 14.2006 32.7066C14.4751 32.9811 14.8473 33.1353 15.2355 33.1353H21.0895C21.4776 33.1353 21.8499 32.9811 22.1243 32.7066C22.3988 32.4322 22.553 32.0599 22.553 31.6718V29.3331C23.5471 28.9192 24.4801 28.3717 25.3263 27.7057L27.3694 28.8853C28.0675 29.2877 28.966 29.0463 29.3685 28.3511L32.2955 23.2874C32.4881 22.9511 32.5401 22.5523 32.44 22.1778C32.34 21.8034 32.096 21.4836 31.7613 21.2882L29.7534 20.1277C29.9103 19.0483 29.9093 17.9519 29.7505 16.8728L31.7584 15.7123C32.455 15.3098 32.6965 14.4098 32.2926 13.7131L29.3656 8.64942C29.1713 8.31354 28.8515 8.06859 28.4766 7.96842C28.1017 7.86825 27.7024 7.92106 27.3664 8.11524L25.3234 9.29483C24.4783 8.62802 23.5456 8.08044 22.5515 7.66741V5.32874C22.5515 4.94059 22.3973 4.56834 22.1229 4.29388C21.8484 4.01942 21.4762 3.86523 21.088 3.86523H15.234C14.8459 3.86523 14.4736 4.01942 14.1992 4.29388C13.9247 4.56834 13.7705 4.94059 13.7705 5.32874V7.66741C12.7764 8.08131 11.8433 8.62882 10.9972 9.29483L8.95558 8.11524C8.78928 8.0189 8.60561 7.95629 8.41509 7.93099C8.22457 7.9057 8.03093 7.91822 7.84525 7.96783C7.65957 8.01745 7.4855 8.10318 7.33298 8.22014C7.18047 8.33709 7.05251 8.48297 6.95643 8.64942L4.02943 13.7131C3.83682 14.0495 3.78488 14.4483 3.88493 14.8227C3.98498 15.1971 4.22891 15.5169 4.56361 15.7123L6.57153 16.8728C6.41367 17.952 6.41367 19.0485 6.57153 20.1277L4.56361 21.2882C3.86698 21.6907 3.6255 22.5907 4.02943 23.2874ZM18.161 12.6462C21.3895 12.6462 24.015 15.2718 24.015 18.5003C24.015 21.7287 21.3895 24.3543 18.161 24.3543C14.9325 24.3543 12.307 21.7287 12.307 18.5003C12.307 15.2718 14.9325 12.6462 18.161 12.6462Z" fill="black"/>
           </svg>
-
         </div>
+
+        <!-- Settings Modal -->
+        <transition name="slide-down">
+          <div v-show="isSettingsModalVisible" class="settings-modal">
+            <div @click="changePasswordBtn()" class="settings-btn-modal">
+              <label>Change Password</label>
+            </div>
+            <div class="divider" style="margin: 0 12px; margin-top: 4px; margin-bottom: 4px;"></div>
+            <div @click="logout()" class="settings-btn-modal">
+              <label>Log Out</label>
+            </div>
+          </div>
+        </transition>
+
+          <!-- Change Password Modal -->
+        <transition name="fade">
+          <div v-show="isChangePasswordModalVisible" class="modal" @click.self="toggleChangePasswordModal()">
+            <div class="change-password-modal-content">
+                <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">Change Password</h2>
+
+                <div style="display: flex; flex-direction: column; gap: 14px; width: 100%;">
+                      <div>
+                        <p class="paragraph--black-bold" style="line-height: 1.8;">Current password</p>
+                        <div style="position: relative;">
+                          <input 
+                            :type="showCurrentPassword ? 'text' : 'password'" 
+                            v-model="currentPassword" 
+                            style="width: 100%; height: 45px; padding-right: 40px; box-sizing: border-box;"
+                          />
+                          
+                          <!-- Password Toggle -->
+                          <svg 
+                            @click="showCurrentPassword = !showCurrentPassword" 
+                            xmlns="http://www.w3.org/2000/svg" 
+                            viewBox="0 0 1030 1030" 
+                            :style="{
+                              position: 'absolute',
+                              top: '50%',
+                              right: '10px',
+                              transform: 'translateY(-50%)',
+                              width: '32px',
+                              height: '32px',
+                              cursor: 'pointer',
+                              fill: showCurrentPassword ? 'var(--color-primary)' : 'black'
+                            }"
+                          >
+                            <path d="M512 384.128a128 128 0 1 0 0 256 128 128 0 0 0 0-256m0 341.333333a213.333333 213.333333 0 1 1 0-426.666666 213.333333 213.333333 0 0 1 0 426.666666m0-533.333333a504.746667 504.746667 0 0 0-469.333333 320 504.32 504.32 0 0 0 938.666666 0 504.746667 504.746667 0 0 0-469.333333-320z"/>
+                          </svg>
+                      </div>
+                    </div>
+
+                    <div>
+                        <p class="paragraph--black-bold" style="line-height: 1.8;">New password</p>
+                        <div style="position: relative;">
+                          <input 
+                            :type="showNewPassword ? 'text' : 'password'" 
+                            v-model="newPassword" 
+                            style="width: 100%; height: 45px; padding-right: 40px; box-sizing: border-box;"
+                          />
+                          
+                          <!-- Password Toggle -->
+                          <svg 
+                            @click="showNewPassword = !showNewPassword" 
+                            xmlns="http://www.w3.org/2000/svg" 
+                            viewBox="0 0 1030 1030" 
+                            :style="{
+                              position: 'absolute',
+                              top: '50%',
+                              right: '10px',
+                              transform: 'translateY(-50%)',
+                              width: '32px',
+                              height: '32px',
+                              cursor: 'pointer',
+                              fill: showNewPassword ? 'var(--color-primary)' : 'black'
+                            }"
+                          >
+                            <path d="M512 384.128a128 128 0 1 0 0 256 128 128 0 0 0 0-256m0 341.333333a213.333333 213.333333 0 1 1 0-426.666666 213.333333 213.333333 0 0 1 0 426.666666m0-533.333333a504.746667 504.746667 0 0 0-469.333333 320 504.32 504.32 0 0 0 938.666666 0 504.746667 504.746667 0 0 0-469.333333-320z"/>
+                          </svg>
+                      </div>
+                    </div>
+
+                    <div>
+                        <p class="paragraph--black-bold" style="line-height: 1.8;">Confirm New password</p>
+                        <div style="position: relative;">
+                          <input 
+                            :type="showConfirmNewPassword ? 'text' : 'password'" 
+                            v-model="confirmNewPassword" 
+                            style="width: 100%; height: 45px; padding-right: 40px; box-sizing: border-box;"
+                          />
+                          
+                          <!-- Password Toggle -->
+                          <svg 
+                            @click="showConfirmNewPassword = !showConfirmNewPassword" 
+                            xmlns="http://www.w3.org/2000/svg" 
+                            viewBox="0 0 1030 1030" 
+                            :style="{
+                              position: 'absolute',
+                              top: '50%',
+                              right: '10px',
+                              transform: 'translateY(-50%)',
+                              width: '32px',
+                              height: '32px',
+                              cursor: 'pointer',
+                              fill: showConfirmNewPassword ? 'var(--color-primary)' : 'black'
+                            }"
+                          >
+                            <path d="M512 384.128a128 128 0 1 0 0 256 128 128 0 0 0 0-256m0 341.333333a213.333333 213.333333 0 1 1 0-426.666666 213.333333 213.333333 0 0 1 0 426.666666m0-533.333333a504.746667 504.746667 0 0 0-469.333333 320 504.32 504.32 0 0 0 938.666666 0 504.746667 504.746667 0 0 0-469.333333-320z"/>
+                          </svg>
+                      </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
+                    <button @click="toggleChangePasswordModal()" class="cancelBtn">Cancel</button>
+                    <button @click="changePasswordConfirm()">Confirm</button>
+                </div>
+            </div>
+          </div>
+        </transition>
+
+
+
       </header>
 
       <!-- Main Content -->
@@ -201,11 +345,59 @@ function logout() {
   height: 52px;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 20px;
+  padding: 10px 30px;
   background-color: white;
   border-bottom: 1px solid var(--color-border);
   color: black;
-  font-size: 1.2rem;
+}
+
+.navbar-elements {
+  display: flex; 
+  flex-direction: row; 
+  align-items: center; 
+  margin-left: auto; gap: 10px;
+  transition: all 0.2s;
+}
+
+.settings-modal {
+  position: absolute; 
+  top: 60px; 
+  right: 30px; 
+  display: flex; 
+  flex-direction: column; 
+  width: 200px; 
+  padding: 4px 0;
+  background-color: white; 
+  border: 1px solid var(--color-border); 
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.settings-btn-modal {
+  flex: 1; 
+  width: 100%; 
+  padding: 8px 25px;
+}
+
+.settings-btn-modal:hover {
+  background-color: var(--color-lightgray-hover);
+  transition: background-color 0.1s ease-in-out;
+}
+
+.change-password-modal-content {
+    display: flex;
+    flex-direction: column;
+    background-color: white;
+    height: auto;
+    align-items: center;
+    width: 520px;
+    padding-top: 30px;
+    padding-bottom: 30px;
+    padding-left: 50px;
+    padding-right: 50px;
+    box-shadow: -2px 0 8px rgba(0,0,0,0.2);
+    border-radius: 6px;
+    gap: 45px;
 }
 
 /* Wrapper for sidebar + content */

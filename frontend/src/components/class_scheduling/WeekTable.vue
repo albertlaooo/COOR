@@ -99,6 +99,18 @@ const defaultTimes = [
 //#region FETCHED DATA FROM DB
 const fetchScheduleAssignments = async () => {
   try {
+    const response = await fetch('http://localhost:3000/get-all-schedules')
+    if (!response.ok) throw new Error('Failed to fetch rooms')
+      scheduleAssignmentDB.value = await response.json()
+
+      console.log('Fetched all schedules from DB: ', scheduleAssignmentDB.value)
+  } catch (err) {
+    console.error('Error fetching rooms:', err)
+  }
+}
+
+const fetchSectionScheduleAssignments = async () => {
+  try {
     const res = await axios.get(`http://localhost:3000/get-schedule/${selectedSection.value.section_id}`)
     if (res.data.success) {
       schedule.value = res.data.schedule // assign the fetched object to schedule.value
@@ -345,8 +357,6 @@ const filteredTeachersForTeachersTable = computed(() => {
   return finalTeachers;
 });
 
-
-
 // Filtered Rooms
 const filteredRooms = computed(() => {
   if (!roomsDB.value) return []
@@ -361,37 +371,45 @@ const filteredRooms = computed(() => {
     let occupiedBy = null
 
     if (hasTimeAndDay) {
-      const selectedDay = clickedDay.value.toLowerCase()
-      const newStart = clickedTime.value.start
-      const newEnd = clickedTime.value.end
+      try {
+        const selectedDay = clickedDay.value.toLowerCase()
+        const newStart = clickedTime.value.start
+        const newEnd = clickedTime.value.end
 
-      const roomSchedules = scheduleAssignmentDB.value.filter(sch =>
-        sch.room_id === room.room_id &&
-        sch.day_of_week.toLowerCase() === selectedDay
-      )
+        const roomSchedules = scheduleAssignmentDB.value.filter(sch =>
+          sch.room_id === room.room_id &&
+          sch.day_of_week.toLowerCase() === selectedDay
+        )
 
-      const conflict = roomSchedules.find(sch => {
-        const start = Number(sch.start_time)
-        const end = Number(sch.end_time)
-        return newStart < end && newEnd > start
-      })
+        const conflict = roomSchedules.find(sch => {
+          const start = Number(sch.start_time)
+          const end = Number(sch.end_time)
+          return newStart < end && newEnd > start
+        })
 
-      if (conflict) {
-        isOccupied = true
-        occupiedBy = sectionsDB.value.find(sec => sec.section_id === conflict.section_id)?.section_format || "Unknown section"
+        if (conflict) {
+          isOccupied = true
+          occupiedBy =
+            sectionsDB.value.find(sec => sec.section_id === conflict.section_id)?.section_format ||
+            "Unknown section"
+        }
+      } catch (error) {
+        console.error(`Error checking room ${room.room_code}:`, error)
       }
     }
 
     return { ...room, isOccupied, occupiedBy }
   })
 
-  // ✅ Apply search filter
+  // Apply search filter
   const filtered = roomsWithStatus.filter(r =>
     r.room_code.toLowerCase().includes(searchTerm)
   )
 
-  // ✅ Sort available rooms first
-  return filtered.sort((a, b) => a.isOccupied - b.isOccupied)
+  // Sort available rooms first
+  const sorted = filtered.sort((a, b) => a.isOccupied - b.isOccupied)
+
+  return sorted
 })
 
 // Filtered Teachers based on subject and availability.
@@ -454,8 +472,6 @@ const filteredTeachersByInputSubject = computed(() => {
     return isAvailable;
   });
 });
-
-
 
 // 🧩 Disable teacher input if there are no matching teachers
 const isTeacherInputDisabled = computed(() => filteredTeachersByInputSubject.value.length === 0);
@@ -696,14 +712,6 @@ function selectSubject(csubj) {
 }
 
 function selectRoom(room) {
-  if (room.isOccupied) {
-    logs.value.push({
-      message: `${room.room_code} is occupied by ${room.occupiedBy}.`,
-      color: 'red'
-    })
-    return
-  }
-
   inputRoom.value = room.room_code
   roomInputFocused.value = false
 }
@@ -812,16 +820,35 @@ watch([filteredRooms, inputRoom], ([newFilteredRooms, newRoom]) => {
   )
 
   if (matchedRoom) {
-    const message = `Room ${matchedRoom.room_code} selected.`
-    if (latestLog !== message) {
-      logs.value.push({
-        message,
-        color: ''
-      })
-    }
-    if (!isInputRoomOk.value) {
-      isInputRoomOk.value = true
-      console.log('isInputRoomOk:', isInputRoomOk.value)
+    // 🧠 Room exists in filtered list
+    if (matchedRoom.isOccupied) {
+      // 🚫 Room is occupied — show red log
+      const message = `${matchedRoom.room_code} is occupied by ${matchedRoom.occupiedBy}.`
+      if (latestLog !== message) {
+        logs.value.push({
+          message,
+          color: 'red'
+        })
+      }
+
+      if (isInputRoomOk.value) {
+        isInputRoomOk.value = false
+        console.log('isInputRoomOk:', isInputRoomOk.value)
+      }
+    } else {
+      // ✅ Room available — normal log
+      const message = `Room ${matchedRoom.room_code} selected.`
+      if (latestLog !== message) {
+        logs.value.push({
+          message,
+          color: ''
+        })
+      }
+
+      if (!isInputRoomOk.value) {
+        isInputRoomOk.value = true
+        console.log('isInputRoomOk:', isInputRoomOk.value)
+      }
     }
   } else {
     // Input changed but no match found
@@ -829,18 +856,9 @@ watch([filteredRooms, inputRoom], ([newFilteredRooms, newRoom]) => {
       isInputRoomOk.value = false
       console.log('isInputRoomOk:', isInputRoomOk.value)
     }
-
-    if (newFilteredRooms.length === 0) {
-      const message = `No rooms found for "${newRoom}".`
-      if (latestLog !== message) {
-        logs.value.push({
-          message,
-          color: 'red'
-        })
-      }
-    }
   }
 })
+
 
 // ✅ Watcher for input teacher
 watch([filteredTeachersByInputSubject, inputTeacher], ([newFilteredTeachers, newTeacher]) => {
@@ -1055,6 +1073,7 @@ onMounted(() => {
   if (route.query.data) {
     selectedSection.value = JSON.parse(route.query.data)
     fetchScheduleAssignments()
+    fetchSectionScheduleAssignments()
     fetchTimeColumn()
     fetchCourseSubjects(selectedSection.value.course_id)
     fetchRooms()

@@ -217,6 +217,39 @@ app.post("/login", (req, res) => {
   );
 });
 
+// Change password endpoint
+app.post("/change-password", (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+  const oldHashed = CryptoJS.SHA256(oldPassword).toString();
+  const newHashed = CryptoJS.SHA256(newPassword).toString();
+
+  // Since you have only one account, just fetch it
+  db.get(`SELECT * FROM admin LIMIT 1`, (err, row) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
+
+    if (!row || row.password !== oldHashed) {
+      return res.json({ success: false, message: "Old password is incorrect" });
+    }
+
+    // Update the password
+    db.run(
+      `UPDATE admin SET password = ? WHERE id = ?`,
+      [newHashed, row.id],
+      (updateErr) => {
+        if (updateErr) {
+          console.error(updateErr);
+          return res.status(500).json({ success: false, message: "Failed to update password" });
+        }
+
+        res.json({ success: true, message: "Password changed successfully" });
+      }
+    );
+  });
+});
+
 /*////////////////////////////////////////////////////////////////////////
 /////////////////////////  TEACHER  //////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////*/ 
@@ -1345,6 +1378,16 @@ app.post("/add-schedule", (req, res) => {
     insertNextDay(Object.keys(schedule));
   });
 });
+
+// READ all schedules
+app.get("/get-all-schedules", (req, res) => {
+  db.all("SELECT * FROM ScheduleAssignments", [], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: err.message })
+    }
+    res.json(rows)
+  })
+})
 
 // Get schedule of section
 app.get("/get-schedule/:section_id", (req, res) => {
