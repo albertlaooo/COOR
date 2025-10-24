@@ -47,7 +47,6 @@ db.serialize(() => {
     db.run(`
         CREATE TABLE IF NOT EXISTS Teachers (
           teacher_id INTEGER PRIMARY KEY AUTOINCREMENT,
-          faculty_id TEXT UNIQUE,
           first_name TEXT NOT NULL,
           last_name TEXT NOT NULL
         );
@@ -255,18 +254,18 @@ app.post("/change-password", (req, res) => {
 ////////////////////////////////////////////////////////////////////////*/ 
 // Insert Teacher
 app.post("/add-teacher", (req, res) => {
-  const { faculty_id, first_name, last_name } = req.body;
+  const { first_name, last_name } = req.body;
 
-  if (!faculty_id || !first_name || !last_name) {
+  if (!first_name || !last_name) {
     return res.status(400).json({ success: false, message: "Missing required fields" });
   }
 
   const sql = `
-    INSERT INTO Teachers (faculty_id, first_name, last_name)
-    VALUES (?, ?, ?)
+    INSERT INTO Teachers (first_name, last_name)
+    VALUES (?, ?)
   `;
 
-  db.run(sql, [faculty_id, first_name, last_name], function (err) {
+  db.run(sql, [first_name, last_name], function (err) {
     if (err) {
       console.error("Error inserting teacher:", err.message);
       return res.status(500).json({ success: false, message: "Database error" });
@@ -275,12 +274,12 @@ app.post("/add-teacher", (req, res) => {
   });
 });
 
+
 // READ all teachers (with departments, subjects, and availability)
 app.get("/teachers", (req, res) => {
   const sql = `
     SELECT
       t.teacher_id,
-      t.faculty_id,
       t.first_name,
       t.last_name,
       COALESCE(
@@ -296,7 +295,11 @@ app.get("/teachers", (req, res) => {
          WHERE ts.teacher_id = t.teacher_id), ''
       ) AS subjects,
       COALESCE(
-        (SELECT GROUP_CONCAT(day_of_week || ' ' || IFNULL(ltrim(strftime('%I:%M %p', time_from), '0'), '') || ' - ' || IFNULL(ltrim(strftime('%I:%M %p', time_to), '0'), ''), ', ')
+        (SELECT GROUP_CONCAT(
+            day_of_week || ' ' ||
+            IFNULL(ltrim(strftime('%I:%M %p', time_from), '0'), '') ||
+            ' - ' ||
+            IFNULL(ltrim(strftime('%I:%M %p', time_to), '0'), ''), ', ')
          FROM TeacherAvailability ta
          WHERE ta.teacher_id = t.teacher_id
          ORDER BY 
@@ -338,15 +341,19 @@ app.delete("/teachers/:id", (req, res) => {
 // UPDATE teacher
 app.put("/update-teacher/:id", (req, res) => {
   const { id } = req.params;
-  const { faculty_id, first_name, last_name } = req.body;
+  const { first_name, last_name } = req.body;
+
+  if (!first_name || !last_name) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
 
   const sql = `
     UPDATE Teachers
-    SET faculty_id = ?, first_name = ?, last_name = ?
+    SET first_name = ?, last_name = ?
     WHERE teacher_id = ?
   `;
 
-  db.run(sql, [faculty_id, first_name, last_name, id], function (err) {
+  db.run(sql, [first_name, last_name, id], function (err) {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -1391,33 +1398,53 @@ app.get("/get-all-schedules", (req, res) => {
 
 // Get schedule of section
 app.get("/get-schedule/:section_id", (req, res) => {
-  const section_id = req.params.section_id
-  db.all(`SELECT s.day_of_week, s.start_time, s.end_time, sub.subject_name, r.room_code, t.last_name || ', ' || t.first_name AS teacher, s.type
-          FROM ScheduleAssignments s
-          JOIN Subjects sub ON s.subject_id = sub.subject_id
-          JOIN Rooms r ON s.room_id = r.room_id
-          JOIN Teachers t ON s.teacher_id = t.teacher_id
-          WHERE s.section_id = ?`, [section_id], (err, rows) => {
-    if (err) return res.status(500).json({ success: false, error: err.message })
+  const section_id = req.params.section_id;
 
-    const scheduleObj = {}
-    rows.forEach(row => {
-      const startStr = String(Math.floor(row.start_time / 60)).padStart(2,'0') + ':' + String(row.start_time % 60).padStart(2,'0')
-      const endStr = String(Math.floor(row.end_time / 60)).padStart(2,'0') + ':' + String(row.end_time % 60).padStart(2,'0')
-      const range = `${startStr}-${endStr}`
+  db.all(
+    `SELECT 
+        s.day_of_week, 
+        s.start_time, 
+        s.end_time, 
+        COALESCE(sub.subject_name, 'null') AS subject_name, 
+        COALESCE(r.room_code, 'null') AS room_code, 
+        COALESCE(t.last_name || ', ' || t.first_name, 'null') AS teacher, 
+        s.type
+     FROM ScheduleAssignments s
+     LEFT JOIN Subjects sub ON s.subject_id = sub.subject_id
+     LEFT JOIN Rooms r ON s.room_id = r.room_id
+     LEFT JOIN Teachers t ON s.teacher_id = t.teacher_id
+     WHERE s.section_id = ?`,
+    [section_id],
+    (err, rows) => {
+      if (err)
+        return res.status(500).json({ success: false, error: err.message });
 
-      if (!scheduleObj[row.day_of_week]) scheduleObj[row.day_of_week] = {}
-      scheduleObj[row.day_of_week][range] = {
-        subject: row.subject_name,
-        room: row.room_code,
-        teacher: row.teacher,
-        type: row.type
-      }
-    })
+      const scheduleObj = {};
+      rows.forEach(row => {
+        const startStr =
+          String(Math.floor(row.start_time / 60)).padStart(2, "0") +
+          ":" +
+          String(row.start_time % 60).padStart(2, "0");
+        const endStr =
+          String(Math.floor(row.end_time / 60)).padStart(2, "0") +
+          ":" +
+          String(row.end_time % 60).padStart(2, "0");
+        const range = `${startStr}-${endStr}`;
 
-    res.json({ success: true, schedule: scheduleObj })
-  })
-})
+        if (!scheduleObj[row.day_of_week]) scheduleObj[row.day_of_week] = {};
+        scheduleObj[row.day_of_week][range] = {
+          subject: row.subject_name,
+          room: row.room_code,
+          teacher: row.teacher,
+          type: row.type,
+        };
+      });
+
+      res.json({ success: true, schedule: scheduleObj });
+    }
+  );
+});
+
 
 /*////////////////////////////////////////////////////////////////////////
 /////////////////////////  ScheduleTimeColumn  ///////////////////////////

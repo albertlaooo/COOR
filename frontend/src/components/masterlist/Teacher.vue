@@ -6,7 +6,6 @@
     const router = useRouter()
 
     // USER DATA INPUT
-    const facultyId = ref('')
     const firstName = ref('')
     const lastName = ref('')
     const department = ref('')
@@ -213,11 +212,10 @@
 
     /////////////////////////////// Table ////////////////////////////
     const searchQuery = ref("")
-    const sortValue = ref("")
+    const sortValue = ref("recent")
 
     const teachersDB = ref([])
 
-    // Final list = search + sort
     const filteredTeachers = computed(() => {
     let result = [...teachersDB.value]
 
@@ -231,22 +229,83 @@
     }
 
     // ↕️ Sort options
-    if (sortValue.value === "name-asc") {
-        result.sort((a, b) => a.name.localeCompare(b.name))
-    } else if (sortValue.value === "name-desc") {
-        result.sort((a, b) => b.name.localeCompare(a.name))
-    } else if (sortValue.value === "dept-asc") {
-        result.sort((a, b) => a.departments.length - b.departments.length)
-    } else if (sortValue.value === "dept-desc") {
-        result.sort((a, b) => b.departments.length - a.departments.length)
-    } else if (sortValue.value === "avail-asc") {
-        result.sort((a, b) => a.availability.length - b.availability.length)
-    } else if (sortValue.value === "avail-desc") {
-        result.sort((a, b) => b.availability.length - a.availability.length)
+    switch (sortValue.value) {
+        case "recent":
+        result.sort((a, b) => b.teacher_id - a.teacher_id) // higher ID = more recent
+        break
+
+        case "name-az":
+            result.sort((a, b) => {
+                const lastWordA = a.last_name.trim().split(' ').slice(-1)[0].toLowerCase()
+                const lastWordB = b.last_name.trim().split(' ').slice(-1)[0].toLowerCase()
+                const cmp = lastWordA.localeCompare(lastWordB)
+                if (cmp !== 0) return cmp
+                return a.first_name.toLowerCase().localeCompare(b.first_name.toLowerCase())
+            })
+            break
+
+        case "name-za":
+            result.sort((a, b) => {
+                const lastWordA = a.last_name.trim().split(' ').slice(-1)[0].toLowerCase()
+                const lastWordB = b.last_name.trim().split(' ').slice(-1)[0].toLowerCase()
+                const cmp = lastWordB.localeCompare(lastWordA)
+                if (cmp !== 0) return cmp
+                return b.first_name.toLowerCase().localeCompare(a.first_name.toLowerCase())
+            })
+            break
+
+        case "dept-asc":
+        result.sort((a, b) => {
+            const countA = a.departments ? a.departments.split(",").length : 0
+            const countB = b.departments ? b.departments.split(",").length : 0
+            return countA - countB
+        })
+        break
+
+        case "dept-desc":
+        result.sort((a, b) => {
+            const countA = a.departments ? a.departments.split(",").length : 0
+            const countB = b.departments ? b.departments.split(",").length : 0
+            return countB - countA
+        })
+        break
+
+        case "subj-asc":
+            result.sort((a, b) => {
+                const countA = a.subjects ? a.subjects.split(",").length : 0
+                const countB = b.subjects ? b.subjects.split(",").length : 0
+                return countA - countB
+            })
+            break
+
+        case "subj-desc":
+            result.sort((a, b) => {
+                const countA = a.subjects ? a.subjects.split(",").length : 0
+                const countB = b.subjects ? b.subjects.split(",").length : 0
+                return countB - countA
+            })
+            break
+
+        case "avail-asc":
+        result.sort((a, b) => {
+            const countA = a.availability ? a.availability.split(",").length : 0
+            const countB = b.availability ? b.availability.split(",").length : 0
+            return countA - countB
+        })
+        break
+
+        case "avail-desc":
+        result.sort((a, b) => {
+            const countA = a.availability ? a.availability.split(",").length : 0
+            const countB = b.availability ? b.availability.split(",").length : 0
+            return countB - countA
+        })
+        break
     }
 
     return result
     })
+
 
     /////////////////////////////// TEACHER MODAL ////////////////////////////
     // For FUNCTION
@@ -268,8 +327,7 @@
     }
 
     const teacherConfirm = async () => {
-        if(facultyId.value !== '' &&
-            firstName.value !== '' &&
+        if(firstName.value !== '' &&
             lastName.value !== '' &&
             selectedDepartments.value.length !== 0 &&
             selectedSubjects.value.length !== 0 &&
@@ -279,7 +337,6 @@
                 try {
                     // Add to Teachers Table
                     const resTeacher = await axios.post("http://localhost:3000/add-teacher", {
-                        faculty_id: facultyId.value,
                         first_name: firstName.value.charAt(0).toUpperCase() + firstName.value.slice(1).toLowerCase(),
                         last_name: lastName.value.charAt(0).toUpperCase() + lastName.value.slice(1).toLowerCase()
                     });
@@ -327,7 +384,6 @@
             else if(teacherHandler.value === 'update'){
                 try {
                     const res = await axios.put(`http://localhost:3000/update-teacher/${selectedTeacher.value.teacher_id}`, {
-                        faculty_id: facultyId.value,
                         first_name: firstName.value.charAt(0).toUpperCase() + firstName.value.slice(1).toLowerCase(),
                         last_name: lastName.value.charAt(0).toUpperCase() + lastName.value.slice(1).toLowerCase()
                     });
@@ -366,8 +422,6 @@
 
                     const resAvail = await axios.post("http://localhost:3000/add-teacher-availability", payload);
                     console.log(resAvail.data.message);
-
-                console.log(res.data.message);
                 
                 fetchTeachers();
                 selectedTeacher.value = null;
@@ -401,7 +455,6 @@
             teacherTitle.value = 'Update Information'
             teacherButton.value = 'Update'
             teacherHandler.value = 'update'
-            facultyId.value = selectedTeacher.value.faculty_id
             firstName.value = selectedTeacher.value.first_name
             lastName.value = selectedTeacher.value.last_name
 
@@ -492,7 +545,6 @@
 
         teachersDB.value = res.data.map(teacher => ({
             teacher_id: teacher.teacher_id,
-            faculty_id: teacher.faculty_id,
             first_name: teacher.first_name,
             last_name: teacher.last_name,
             departments: teacher.departments,
@@ -526,7 +578,6 @@
     ///////////////////////////// RESET INPUT ////////////////////////////
     function resetInputs(){
         setTimeout(() => {
-            facultyId.value = ''
             firstName.value = ''
             lastName.value = ''
             department.value = ''
@@ -589,14 +640,15 @@
 
                 <!-- Sort -->
                 <select v-model="sortValue" style="padding: 6px; padding-left: 15px;">
-                    <option value="">Sort by</option>
-                    <option value="name-asc">Most Recent</option>
-                    <option value="name-asc">Name (A-Z)</option>
-                    <option value="name-desc">Name (Z-A)</option>
-                    <option value="dept-asc">Departments (Fewest)</option>
-                    <option value="dept-desc">Departments (More)</option>
-                    <option value="avail-asc">Availability (Fewest)</option>
-                    <option value="avail-desc">Availability (More)</option>
+                <option value="recent">Most Recent</option>
+                <option value="name-az">Last Name (A-Z)</option>
+                <option value="name-za">Last Name (Z-A)</option>
+                <option value="dept-asc">Departments (Fewest)</option>
+                <option value="dept-desc">Departments (More)</option>
+                <option value="subj-asc">Subjects (Fewest)</option>
+                <option value="subj-desc">Subjects (More)</option>
+                <option value="avail-asc">Availability (Fewest)</option>
+                <option value="avail-desc">Availability (More)</option>
                 </select>
 
                 <button @click="toggleTeacherModal('add')"  style="margin-left: auto; width: 200px;">+ Add Teacher</button>
@@ -605,7 +657,6 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Faculty ID</th>
                             <th>Name</th>
                             <th>Departments</th>
                             <th>Subjects</th>
@@ -621,8 +672,7 @@
 
                          <!-- Render teacher rows if available -->
                         <tr v-for="item in filteredTeachers" :key="item.id">
-                        <td :title="item.faculty_id">{{ item.faculty_id }}</td>
-                        <td :title="item.first_name + ', ' + item.last_name">{{ item.first_name + ', ' + item.last_name }}</td>
+                        <td :title="item.first_name + ', ' + item.last_name">{{ item.last_name + ', ' + item.first_name }}</td>
                         <td :title="item.departments.replaceAll(/,\s*/g, '\n')">{{ item.departments }}</td>
                         <td :title="item.subjects.replaceAll(/,\s*/g, '\n')">{{ item.subjects }}</td>
                         <td :title="item.availability.replaceAll(/,\s*/g, '\n')">{{ item.availability }}</td>
@@ -651,11 +701,6 @@
 
                         <!-- Left section -->
                         <div style="display: flex; flex-direction: column; gap: 14px; flex: 1">
-                            <div>
-                                <p class="paragraph--black-bold" style="line-height: 1.8;">Faculity ID</p>
-                                <input v-model="facultyId" :class="{ 'error-input-border': showErrorInput && facultyId.trim() === '' }"></input>
-                            </div>
-
                              <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; column-gap: 15px; ">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">First Name</p>
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Last Name</p>

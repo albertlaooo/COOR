@@ -214,7 +214,7 @@ async function subjectAssignConfirm() {
 
         try {
             const res = await axios.post("http://localhost:3000/add-course-subject", plainSubject)
-            if (res.data.success) fetchSubjectsOnCourse()
+            if (res.data.success) await Promise.all([fetchSubjectsOnCourse(), fetchCourses()]);
             else alert(res.data.message || "Failed to assign subject.")
         } catch (err) {
             console.error(err)
@@ -249,7 +249,7 @@ async function removeSubject(subjectId) {
 
         if (res.data.success) {
             console.log(res.data.message)
-            fetchSubjectsOnCourse()
+            await Promise.all([fetchSubjectsOnCourse(), fetchCourses()]);
         } else {
             alert("Failed to remove subject: " + res.data.message)
         }

@@ -4,7 +4,10 @@ import { useRouter,useRoute  } from 'vue-router'
 import axios from "axios"
 
 //#region 🧱 REFS & STATE
+const schedules = ref([])
 const sections = ref([])
+const nullSectionIds = ref([])
+
 //#endregion
 
 //#region 📘 FETCH SECTIONS
@@ -12,12 +15,52 @@ const fetchSections = async () => {
     try {
         const res = await axios.get("http://localhost:3000/sections")
         sections.value = res.data
+
         console.log(sections.value)
     } catch (err) {
         console.error("Error fetching sections:", err)
     }
 }
 
+const fetchAllSchedules = async () => {
+  try {
+    const response = await axios.get('http://localhost:3000/get-all-schedules')
+    schedules.value = response.data
+
+    // Find schedules with null subject, room, or teacher
+    const nullSchedules = schedules.value.filter(sch =>
+      sch.subject_id === null ||
+      sch.room_id === null ||
+      sch.teacher_id === null
+    )
+
+    // Get unique section IDs from those null schedules
+    nullSectionIds.value = [...new Set(nullSchedules.map(sch => sch.section_id))]
+
+    // Update status of each affected section
+    for (const sectionId of nullSectionIds.value) {
+      await updateScheduleStatus(sectionId, "Partially Set")
+    }
+
+  } catch (error) {
+    console.error('Error fetching schedules:', error)
+    console.log('Failed to load schedules.')
+  }
+}
+
+// Update schedule status (PUT request)
+const updateScheduleStatus = async (sectionId, status) => {
+  try {
+    const res = await axios.put(
+      `http://localhost:3000/update-schedule-status/${sectionId}`,
+      { schedule_status: status }
+    )
+    console.log(`✅ Schedule status updated for section ${sectionId}:`, res.data)
+  } catch (err) {
+    console.error(`❌ Error updating schedule status for section ${sectionId}:`, err)
+    alert("Error saving data for section " + sectionId)
+  }
+}
 
 // Group sections by "A.Y. YEAR – Semester"
 const groupedSections = computed(() => {
@@ -51,9 +94,11 @@ const groupedSections = computed(() => {
     return sortedGroups
 })
 
-onMounted(() => {
-    fetchSections()
+onMounted(async () => {
+  await fetchSections()
+  await fetchAllSchedules()
 })
+
 //#endregion
 
 //#region 🧭 ROUTER
@@ -70,6 +115,7 @@ function goToPage(section) {
 watch(
   () => route.fullPath, // or route.name
   () => {
+    fetchAllSchedules()
     fetchSections()
   }
 )

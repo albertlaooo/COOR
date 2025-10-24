@@ -1013,6 +1013,24 @@ function addScheduleConfirm() {
 }
 
 const saveScheduleToDB = async () => {
+  // ✅ Check for null values in schedule.value before saving
+  if (schedule.value) {
+    for (const day in schedule.value) {
+      for (const range in schedule.value[day]) {
+        const entry = schedule.value[day][range];
+        if (
+          !entry ||
+          entry.subject === "null" ||
+          entry.room === "null" ||
+          entry.teacher === "null"
+        ) {
+          alert("There shouldn't be null values in the schedule.");
+          return; // stop saving
+        }
+      }
+    }
+  }
+  
   const saveData = async (url, payload) => {
     try {
       const res = await axios.post(url, payload)
