@@ -39,6 +39,21 @@ db.serialize(() => {
     // Insert default admin (Single user)
     const defaultUsername = "admin";
     const defaultPassword = CryptoJS.SHA256("admin1234").toString(); // hash password
+
+    /* REMOVE COMMENT Multi-line comment sign to reset password to admin1234)
+      db.run(
+        `UPDATE admin SET password = ? WHERE id = 1`, // or whatever your admin ID is
+        [defaultPassword],
+        function (err) {
+          if (err) {
+            console.error("Failed to reset password:", err);
+          } else {
+            console.log("Admin password reset to 'admin1234'");
+          }
+        }
+      );
+    */
+
     db.run(`
         INSERT OR IGNORE INTO admin (username, password) 
         VALUES ('${defaultUsername}', '${defaultPassword}')
@@ -814,6 +829,49 @@ app.put("/update-schedule-status/:id", (req, res) => {
   });
 });
 
+// API route to get all required subjects for a specific section (filtered by year & semester)
+app.get("/sections/:id/subjects-required", (req, res) => {
+  const sectionId = req.params.id;
+
+  // Step 1: Get section info (course_id, year, semester)
+  const sectionSql = `SELECT course_id, year, semester FROM Sections WHERE section_id = ?`;
+  db.get(sectionSql, [sectionId], (err, section) => {
+    if (err) {
+      console.error("Error fetching section:", err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+    if (!section) {
+      return res.status(404).json({ success: false, message: "Section not found" });
+    }
+
+    const { course_id, year, semester } = section;
+
+    // Step 2: Get subjects for that course filtered by year & semester
+    const sql = `
+      SELECT
+        cs.subject_id,
+        s.subject_name,
+        s.subject_code,
+        s.lecture,
+        s.laboratory
+      FROM CourseSubjects cs
+      JOIN Subjects s ON cs.subject_id = s.subject_id
+      WHERE cs.course_id = ?
+        AND cs.year = ?
+        AND cs.semester = ?
+      ORDER BY s.subject_name
+    `;
+    db.all(sql, [course_id, year, semester], (err, rows) => {
+      if (err) {
+        console.error("Error fetching subjects:", err.message);
+        return res.status(500).json({ success: false, message: "Database error" });
+      }
+
+      res.json(rows); // returns only subjects required for this section
+    });
+  });
+});
+
 /*////////////////////////////////////////////////////////////////////////
 /////////////////////////  SECTIONS ARCHIVED  ////////////////////////////
 ////////////////////////////////////////////////////////////////////////*/ 
@@ -1170,6 +1228,8 @@ app.delete("/remove-course-subject", (req, res) => {
         }
     });
 });
+
+
 /*////////////////////////////////////////////////////////////////////////
 /////////////////////////  SUBJECTS  //////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////*/ 

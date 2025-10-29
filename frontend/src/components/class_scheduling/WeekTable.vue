@@ -1063,7 +1063,7 @@ const saveScheduleToDB = async () => {
 
   if (Object.keys(schedule.value).length === 0) {
     scheduleStatus = 'Unset'
-  } else if (filteredTeachersForTeachersTable.value.length === 0) {
+  } else if (filteredSubjectsForSubjectsTable.value.length === 0) {
     scheduleStatus = 'Complete'
   } else {
     scheduleStatus = 'Partially Set'

@@ -1,7 +1,8 @@
 <script setup>
 import { CanceledError } from 'axios'
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from "axios"
 
 const router = useRouter()
 
@@ -9,6 +10,14 @@ const router = useRouter()
 const sidebarBtnRotated = ref(false)
 const settingsRotated = ref(false)
 const sidebarCollapsed = ref(false)
+
+const showErrorInput = ref(true)
+
+const isCurrentPasswordOk = ref(true)
+const isNewPasswordOk = ref(true)
+const isConfirmNewPasswordOk = ref(true)
+
+const changePasswordMessage = ref('')
 
 const sidebarBtn = () => {
   sidebarBtnRotated.value = !sidebarBtnRotated.value
@@ -24,7 +33,6 @@ const tabs = [
   { name: 'Home', path: '/main/home' },
   { name: 'Masterlist', path: '/main/masterlist' },
   { name: 'Class Scheduling', path: '/main/class-scheduling' },
-  { name: 'Timetables', path: '/main/timetables' },
 ]
 
 function logout() {
@@ -50,9 +58,81 @@ function changePasswordBtn() {
   isSettingsModalVisible.value = false
 }
 
-function changePasswordConfirm() {
-  
+async function changePasswordConfirm() {
+  // Reset validation flags
+  showErrorInput.value = false;
+  isCurrentPasswordOk.value = true;
+  isNewPasswordOk.value = true;
+  isConfirmNewPasswordOk.value = true;
+  changePasswordMessage.value = '';
+
+  // Validate empty fields
+  let hasError = false;
+  if (!currentPassword.value) {
+    isCurrentPasswordOk.value = false;
+    hasError = true;
+  }
+  if (!newPassword.value) {
+    isNewPasswordOk.value = false;
+    hasError = true;
+  }
+  if (!confirmNewPassword.value) {
+    isConfirmNewPasswordOk.value = false;
+    hasError = true;
+  }
+  if (hasError) {
+    showErrorInput.value = true;
+    changePasswordMessage.value = 'Please fill out all fields.'
+
+    // animate red border
+    showErrorInput.value = false
+    setTimeout(() => { showErrorInput.value = true; }, 0);
+    return; // Stop here if any field is empty
+  }
+
+  // Check if new password matches confirm password
+  if (newPassword.value !== confirmNewPassword.value) {
+    isNewPasswordOk.value = false;
+    isConfirmNewPasswordOk.value = false;
+    showErrorInput.value = true;
+    changePasswordMessage.value = 'New password and confirmation do not match.'
+
+    // animate red border
+    showErrorInput.value = false
+    setTimeout(() => { showErrorInput.value = true; }, 0);
+    return; // Stop here if mismatch
+  }
+
+  // Call API to change password
+  try {
+    const response = await axios.post("http://localhost:3000/change-password", {
+      oldPassword: currentPassword.value,
+      newPassword: newPassword.value
+    });
+
+    if (response.data.success) {
+      // Reset fields on success
+      currentPassword.value = '';
+      newPassword.value = '';
+      confirmNewPassword.value = '';
+      showErrorInput.value = false;
+      toggleChangePasswordModal();
+    } else {
+      // Old password incorrect
+      isCurrentPasswordOk.value = false;
+      showErrorInput.value = true;
+
+      // animate red border
+      showErrorInput.value = false
+      setTimeout(() => { showErrorInput.value = true; }, 0);
+      changePasswordMessage.value = 'Current password is incorrect.'
+    }
+  } catch (error) {
+    console.error("Error changing password:", error);
+    changePasswordMessage.value = '⚠️ Server error. Please try again later.'
+  }
 }
+
 
 function toggleChangePasswordModal(){
   isChangePasswordModalVisible.value = !isChangePasswordModalVisible.value
@@ -63,6 +143,21 @@ function toggleChangePasswordModal(){
     confirmNewPassword.value = '';
   }, 100);
 }
+
+// Watch currentPassword input
+watch(currentPassword, (newVal) => {
+  isCurrentPasswordOk.value = newVal.length > 0
+})
+
+// Watch newPassword input
+watch(newPassword, (newVal) => {
+  isNewPasswordOk.value = newVal.length > 0
+})
+
+// Watch confirmNewPassword input
+watch(confirmNewPassword, (newVal) => {
+  isConfirmNewPasswordOk.value = newVal.length > 0
+})
 </script>
 
 <template>
@@ -154,25 +249,6 @@ function toggleChangePasswordModal(){
         </defs>
       </svg>
 
-      <!-- Timetables -->
-      <svg
-        v-else-if="tab.name === 'Timetables'"
-        width="22"
-        height="22"
-        viewBox="0 0 24 24"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-      >
-        <path
-          d="M7 11H9V13H7V11ZM7 15H9V17H7V15ZM11 11H13V13H11V11ZM11 15H13V17H11V15ZM15 11H17V13H15V11ZM15 15H17V17H15V15Z"
-          fill="currentColor"
-        />
-        <path
-          d="M5 22H19C20.103 22 21 21.103 21 20V6C21 4.897 20.103 4 19 4H17V2H15V4H9V2H7V4H5C3.897 4 3 4.897 3 6V20C3 21.103 3.897 22 5 22ZM19 8L19.001 20H5V8H19Z"
-          fill="currentColor"
-        />
-      </svg>
-
         <label style="font-weight: 400;" v-show="!sidebarCollapsed">{{ tab.name }}</label>
       </router-link>
 
@@ -227,6 +303,7 @@ function toggleChangePasswordModal(){
                             :type="showCurrentPassword ? 'text' : 'password'" 
                             v-model="currentPassword" 
                             style="width: 100%; height: 45px; padding-right: 40px; box-sizing: border-box;"
+                            :class="{ 'error-input-border': showErrorInput && !isCurrentPasswordOk }"
                           />
                           
                           <!-- Password Toggle -->
@@ -257,6 +334,7 @@ function toggleChangePasswordModal(){
                             :type="showNewPassword ? 'text' : 'password'" 
                             v-model="newPassword" 
                             style="width: 100%; height: 45px; padding-right: 40px; box-sizing: border-box;"
+                            :class="{ 'error-input-border': showErrorInput && !isNewPasswordOk }"
                           />
                           
                           <!-- Password Toggle -->
@@ -287,6 +365,7 @@ function toggleChangePasswordModal(){
                             :type="showConfirmNewPassword ? 'text' : 'password'" 
                             v-model="confirmNewPassword" 
                             style="width: 100%; height: 45px; padding-right: 40px; box-sizing: border-box;"
+                            :class="{ 'error-input-border': showErrorInput && !isConfirmNewPasswordOk }"
                           />
                           
                           <!-- Password Toggle -->
@@ -309,7 +388,13 @@ function toggleChangePasswordModal(){
                           </svg>
                       </div>
                     </div>
+                    <div>
+                      
+                    <label style="color: red; font-size: 0.95rem;">{{ changePasswordMessage }}</label>
+                    </div>
                 </div>
+
+                
 
                 <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
                     <button @click="toggleChangePasswordModal()" class="cancelBtn">Cancel</button>

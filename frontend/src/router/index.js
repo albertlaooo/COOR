@@ -20,8 +20,6 @@ import Rooms from '../components/masterlist/Rooms.vue'
 import ClassScheduling from '../components/class_scheduling/ClassScheduling.vue'
 import WeekTable from '../components/class_scheduling/WeekTable.vue'
 
-import Timetables from '../components/timetables/TimeTables.vue'
-
 const routes = [
   { path: '/', name: 'Login', component: Login, meta: { title: 'COOR | Login' } },
   { 
@@ -89,8 +87,6 @@ const routes = [
           }
         ]
       },
-
-      { path: 'timetables', name: 'Timetables', component: Timetables, meta: { title: 'COOR | Timetables' } },
       
       { path: '', redirect: 'home' } // default tab
     ]
