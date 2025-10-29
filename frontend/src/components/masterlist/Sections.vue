@@ -120,40 +120,6 @@ const groupedArchivedSections = computed(() => {
 })
 //#endregion
 
-//#region 🗑️ DELETE ARCHIVED SECTIONS
-async function deleteArchivedSection(key) {
-    if (!confirm(`Are you sure you want to delete ${key}?`)) return
-
-    const regex = /A\.Y\. (.*?) – (.*)/
-    const match = key.match(regex)
-
-    if (!match) {
-        alert("Invalid group key format.")
-        return
-    }
-
-    const academic_year = match[1]
-    const semesterText = match[2]
-    const semester = semesterText.includes("1st") ? 1 : 2
-
-    try {
-        const res = await axios.delete(
-            `http://localhost:3000/sections-archived/${academic_year}/${semester}`
-        )
-
-        if (res.data.success) {
-            alert("Archived sections deleted successfully.")
-            await fetchArchivedSections()
-        } else {
-            alert("Failed to delete archived sections.")
-        }
-    } catch (err) {
-        console.error("Error deleting archived sections:", err)
-        alert("An error occurred while deleting archived sections.")
-    }
-}
-//#endregion
-
 //#region 📚 FETCH COURSES
 const coursesDB = ref([])
 
@@ -200,9 +166,17 @@ function recalculateSectionFormat(courseName, newYear) {
 }
 
 async function moveUpBtn() {
-    if (passwordConfirmation.value !== 'admin1234') {
-        alert("Wrong password!")
-        return
+    const response = await fetch("http://localhost:3000/check-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: passwordConfirmation.value })
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+    alert("Wrong password!");
+    return;
     }
 
     const regex = /^A\.Y\. (\d{4}[–-]\d{4}) – (.*)$/
@@ -279,8 +253,6 @@ async function moveUpBtn() {
                 })
             }
         }
-
-        alert("Records moved up successfully!")
         await fetchSections()
         await fetchArchivedSections()
 
@@ -414,27 +386,6 @@ const courseExists = computed(() =>
     )
 )
 
-const deleteSectionBtn = async () => {
-    if (!confirm(`Are you sure you want to delete section: ${selectedSection.value.course_name}?`)) {
-        return;
-    }
-
-    try {
-        // DELETE SECTION
-        await axios.delete(`http://localhost:3000/sections/${selectedSection.value.section_id}`);
-
-        // UI Update (Refresh Data)
-        await fetchSections()
-        isVisibleAddSection.value = !isVisibleAddSection.value
-        resetInputs()
-        
-    } catch (err) {
-        console.error("Error during section deletion", err);
-        // Mas specific na error message
-        alert("Failed to secton.");
-    }
-}
-
 const sectionConfirm = async () => {
     if (
         course.value &&
@@ -488,6 +439,77 @@ watch([course, year, semester, coursesDB], () => {
 
     sectionFormat.value = `${courseCode}${yearPart}`.trim()
 }, { deep: true })
+//#endregion
+
+//#region 🗑️ DELETE MODAL (Section and Archived)
+const isVisibleDeleteModal = ref(false)
+const sectionNameToDelete = ref('')
+const isDeletingArchived = ref(false)
+let keyToDelete = ''
+
+function toggleDeleteModal() {
+    isVisibleDeleteModal.value = !isVisibleDeleteModal.value
+}
+
+// Called when clicking delete on archived section list
+async function deleteArchivedSection(key) {
+  keyToDelete = key
+  sectionNameToDelete.value = key
+  isDeletingArchived.value = true
+  toggleDeleteModal()
+}
+
+// Called when clicking delete on regular section list
+async function deleteSectionBtn() {
+    sectionNameToDelete.value = selectedSection.value.section_format;
+    toggleDeleteModal()
+}
+
+async function confirmDelete() {
+  try {
+    if (isDeletingArchived.value) {
+      // 🗑️ DELETE ARCHIVED SECTION
+      const regex = /A\.Y\. (.*?) – (.*)/
+      const match = keyToDelete.match(regex)
+
+      if (!match) {
+        alert("Invalid group key format.")
+        toggleDeleteModal()
+        return
+      }
+
+      const academic_year = match[1]
+      const semesterText = match[2]
+      const semester = semesterText.includes("1st") ? 1 : 2
+
+      const res = await axios.delete(
+        `http://localhost:3000/sections-archived/${academic_year}/${semester}`
+      )
+
+      if (res.data.success) {
+        await fetchArchivedSections()
+      } else {
+        alert("Failed to delete archived sections.")
+      }
+
+    } else {
+      // 🗑️ DELETE REGULAR SECTION
+      await axios.delete(
+        `http://localhost:3000/sections/${selectedSection.value.section_id}`
+      )
+      await fetchSections()
+      isVisibleAddSection.value = !isVisibleAddSection.value
+      resetInputs()
+    }
+  } catch (err) {
+    console.error("Error during deletion:", err)
+    alert("An error occurred while deleting.")
+  } finally {
+    toggleDeleteModal()
+    isDeletingArchived.value = false
+    keyToDelete = ''
+  }
+}
 //#endregion
 </script>
 
@@ -817,6 +839,26 @@ watch([course, year, semester, coursesDB], () => {
             </div>
         </transition>
 
+        <!-- Delete Section Modal -->
+        <transition name="fade">
+            <div v-show="isVisibleDeleteModal" class="modal" @click.self="toggleDeleteModal"> 
+                <div class="delete-modal-content">
+                    <div style="display: flex; flex-direction: column; width: 100%; gap: 24px;">
+                        <div style="display: flex; flex-direction: row; gap: 10px; align-items: center; justify-content: start;">
+                            <svg class="svg-icon" style="width: 2.5em; height: 2.5em; vertical-align: middle;fill: #b84343;overflow: hidden;" viewBox="188 129 648 784" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M779.3 228.2h-113v-35.4c0-34.9-28.4-63.3-63.3-63.3H425c-34.9 0-63.3 28.4-63.3 63.3v35.4h-113c-32.9 0-59.7 26.8-59.7 59.7v38.5c0 32.9 26.8 59.7 59.7 59.7h1.8v412.8c0 54.1 44 98.1 98.1 98.1h330.9c54.1 0 98.1-44 98.1-98.1V386.1h1.8c32.9 0 59.7-26.8 59.7-59.7v-38.5c-0.1-32.9-26.8-59.7-59.8-59.7z m-374.9-35.4c0-11.4 9.2-20.6 20.6-20.6h178c11.4 0 20.6 9.2 20.6 20.6v35.4H404.4v-35.4z m330.4 606c0 30.5-24.8 55.4-55.4 55.4H348.5c-30.5 0-55.4-24.8-55.4-55.4V386.1h441.7v412.7z m61.5-472.4c0 9.4-7.6 17-17 17H248.7c-9.4 0-17-7.6-17-17v-38.5c0-9.4 7.6-17 17-17h530.7c9.4 0 17 7.6 17 17v38.5z"  /><path d="M377.9 462.3h42.7v317.5h-42.7zM492.6 462.3h42.7v317.5h-42.7zM607.4 462.3h42.7v317.5h-42.7z"  /></svg>
+                            <h3 style="line-height: 0; font-size: x-large; margin: 10px 0px;">Delete Confirmation</h3>
+                        </div>
+                        
+                        <p>Are you sure you want to delete <strong>{{ sectionNameToDelete }}</strong>?</p>
+
+                        <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto; margin-top: 12px;">
+                            <button @click="toggleDeleteModal" class="cancelBtn">Cancel</button>
+                            <button @click="confirmDelete()"  class="delete-btn">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </transition>
     </div>
 </template>
 

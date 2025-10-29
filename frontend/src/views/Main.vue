@@ -291,7 +291,7 @@ watch(confirmNewPassword, (newVal) => {
 
           <!-- Change Password Modal -->
         <transition name="fade">
-          <div v-show="isChangePasswordModalVisible" class="modal" @click.self="toggleChangePasswordModal()">
+          <div v-show="isChangePasswordModalVisible" class="modal" style="z-index: 3;" @click.self="toggleChangePasswordModal()">
             <div class="change-password-modal-content">
                 <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">Change Password</h2>
 

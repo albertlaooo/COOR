@@ -121,18 +121,25 @@
         await fetchDepartments();
     });
 
-    /////////////////////////////// DELETE DEPARTMENTS ////////////////////////////
+    /////////////////////////////// DELETE DEPARTMENT MODAL ////////////////////////////
+    const isVisibleDeleteModal = ref(false)
+    const departmentNameToDelete = ref('')
+
     async function deleteDepartment() {
+        departmentNameToDelete.value = selectedDept.value.name;
+        toggleDeleteModal()
+    }
+
+    function toggleDeleteModal() {
+        isVisibleDeleteModal.value = !isVisibleDeleteModal.value
+    }
+
+    async function confirmDelete() {
         if (!selectedDept.value || !selectedDept.value.id) {
             return;
         }
         
         const departmentIdToDelete = selectedDept.value.id;
-        const deptName = selectedDept.value.name;
-
-        if (!confirm(`Are you sure you want to delete the department: ${deptName}? All assigned courses will be unassigned.`)) {
-            return;
-        }
 
         try {
             // CLEAR COURSES: Send PUT request to set department_id to NULL for all associated courses
@@ -154,7 +161,11 @@
             // Mas specific na error message
             alert("Failed to delete department. Please check if there are other related data (e.g., teachers) preventing the deletion, or check the console.");
         }
+
+        toggleDeleteModal()
     }
+
+
 
     /////////////////////////////// NAVIGATION FUNCTION ////////////////////////////
     function backBtn() {
@@ -547,10 +558,7 @@
 
                                 <!-- Dropdown suggestions -->
                                 <div v-if="inputFocused && filteredCourses.length" 
-                                    style="position: absolute; display: flex; flex-direction: column; background-color: white;
-                                            width: 100%;  padding-top: 6px; padding-bottom: 6px; border-radius: 6px; border: 1px solid var(--color-border);
-                                            margin-top: 6px; box-sizing: border-box;
-                                            max-height: 200px; overflow-y: auto;"> 
+                                    class="dropdown"> 
 
                                     <div v-for="(crse, index) in filteredCourses" 
                                         :key="crse.course_id"
@@ -646,6 +654,27 @@
                     <button @click="imageChooseCancel" class="cancelBtn">Cancel</button>
                     <button @click="imageChooseConfirm">Confirm</button>
                 </div>
+                </div>
+            </div>
+        </transition>
+
+        <!-- Delete Department Modal -->
+        <transition name="fade">
+            <div v-show="isVisibleDeleteModal" class="modal" @click.self="toggleDeleteModal"> 
+                <div class="delete-modal-content">
+                    <div style="display: flex; flex-direction: column; width: 100%; gap: 24px;">
+                        <div style="display: flex; flex-direction: row; gap: 10px; align-items: center; justify-content: start;">
+                            <svg class="svg-icon" style="width: 2.5em; height: 2.5em; vertical-align: middle;fill: #b84343;overflow: hidden;" viewBox="188 129 648 784" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M779.3 228.2h-113v-35.4c0-34.9-28.4-63.3-63.3-63.3H425c-34.9 0-63.3 28.4-63.3 63.3v35.4h-113c-32.9 0-59.7 26.8-59.7 59.7v38.5c0 32.9 26.8 59.7 59.7 59.7h1.8v412.8c0 54.1 44 98.1 98.1 98.1h330.9c54.1 0 98.1-44 98.1-98.1V386.1h1.8c32.9 0 59.7-26.8 59.7-59.7v-38.5c-0.1-32.9-26.8-59.7-59.8-59.7z m-374.9-35.4c0-11.4 9.2-20.6 20.6-20.6h178c11.4 0 20.6 9.2 20.6 20.6v35.4H404.4v-35.4z m330.4 606c0 30.5-24.8 55.4-55.4 55.4H348.5c-30.5 0-55.4-24.8-55.4-55.4V386.1h441.7v412.7z m61.5-472.4c0 9.4-7.6 17-17 17H248.7c-9.4 0-17-7.6-17-17v-38.5c0-9.4 7.6-17 17-17h530.7c9.4 0 17 7.6 17 17v38.5z"  /><path d="M377.9 462.3h42.7v317.5h-42.7zM492.6 462.3h42.7v317.5h-42.7zM607.4 462.3h42.7v317.5h-42.7z"  /></svg>
+                            <h3 style="line-height: 0; font-size: x-large; margin: 10px 0px;">Delete Confirmation</h3>
+                        </div>
+                        
+                        <p>Are you sure you want to delete <strong>{{ departmentNameToDelete }}</strong> department?</p>
+
+                        <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto; margin-top: 12px;">
+                            <button @click="toggleDeleteModal" class="cancelBtn">Cancel</button>
+                            <button @click="confirmDelete()"  class="delete-btn">Delete</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </transition>
@@ -852,34 +881,4 @@
         height: 100px;
         object-fit: contain;
     }
-
-    .dropdown-item {
-        padding-left: 12px;
-        padding-right: 12px;
-        padding-top: 6px;
-        padding-bottom: 6px;
-        cursor: pointer;
-        border-radius: 4px;
-        color: black;
-    }
-
-    .dropdown-item:hover {
-        background: #eee;
-    }
-
-    .dropdown-item.assigned-course {
-        background-color: #f0f0f0;
-        color: #666;
-        cursor: default;
-    }
-
-    .dropdown-item.assigned-course:hover {
-        background-color: #e0e0e0; 
-    }
-
-    .dropdown-item:not(.assigned-course):hover {
-        background: #eee;
-    }
-
-
 </style>

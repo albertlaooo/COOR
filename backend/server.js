@@ -264,6 +264,26 @@ app.post("/change-password", (req, res) => {
   });
 });
 
+// Check password endpoint
+app.post("/check-password", (req, res) => {
+  const { password } = req.body;
+  const hashed = CryptoJS.SHA256(password).toString();
+
+  db.get(`SELECT * FROM admin LIMIT 1`, (err, row) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ success: false, message: "Server error" });
+    }
+
+    if (!row || row.password !== hashed) {
+      return res.json({ success: false, message: "Incorrect password" });
+    }
+
+    res.json({ success: true, message: "Password is correct" });
+  });
+});
+
+
 /*////////////////////////////////////////////////////////////////////////
 /////////////////////////  TEACHER  //////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////*/ 

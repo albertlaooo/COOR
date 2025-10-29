@@ -805,33 +805,4 @@ watch(
     .export-btn > p {
         color: white;
     }
-
-    .dropdown {
-        position: absolute; 
-        display: flex; 
-        flex-direction: column; 
-        background-color: white;               
-        width: 100%;  
-        padding-top: 6px; 
-        padding-bottom: 6px; 
-        border-radius: 6px; 
-        border: 1px solid var(--color-border); 
-        margin-top: 6px; box-sizing: border-box;        
-        max-height: 200px; overflow-y: auto;
-        z-index: 3;
-    }
-
-    .dropdown-item {
-        padding-left: 12px;
-        padding-right: 12px;
-        padding-top: 6px;
-        padding-bottom: 6px;
-        cursor: pointer;
-        border-radius: 4px;
-        color: black;
-    }
-
-    .dropdown-item:hover {
-        background: #eee;
-    }
 </style>
