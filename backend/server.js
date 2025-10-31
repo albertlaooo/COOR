@@ -731,6 +731,21 @@ app.get("/sections", (req, res) => {
   });
 });
 
+// READ Section by ID
+app.get("/sections/:id", (req, res) => {
+  const id = req.params.id;
+
+  db.get("SELECT * FROM Sections WHERE section_id = ?", [id], (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    if (!row) {
+      return res.status(404).json({ error: "Section not found" });
+    }
+    res.json(row);
+  });
+});
+
 // DELETE Section
 app.delete("/sections/:id", (req, res) => {
   const id = req.params.id;
@@ -1798,6 +1813,7 @@ app.get("/get-schedule/:section_id", (req, res) => {
         s.day_of_week, 
         s.start_time, 
         s.end_time, 
+        COALESCE(sub.subject_code, 'null') AS subject_code,
         COALESCE(sub.subject_name, 'null') AS subject_name, 
         COALESCE(r.room_code, 'null') AS room_code, 
         COALESCE(t.last_name || ', ' || t.first_name, 'null') AS teacher, 
@@ -1826,6 +1842,7 @@ app.get("/get-schedule/:section_id", (req, res) => {
 
         if (!scheduleObj[row.day_of_week]) scheduleObj[row.day_of_week] = {};
         scheduleObj[row.day_of_week][range] = {
+          subject_code: row.subject_code,
           subject: row.subject_name,
           room: row.room_code,
           teacher: row.teacher,

@@ -1,9 +1,192 @@
 <script setup>
 import html2canvas from 'html2canvas'
 import jsPDF from 'jspdf'
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import axios from 'axios'
+import { store } from '../store.js'
 
+//#region 🧱 REFS & STATE
+const subjectIdToExport = computed(() => store.sectionId)
+const semesterAY = ref('')
+const course = ref('')
+const year = ref('')
+
+watch(subjectIdToExport, async (newId) => {
+  if (newId) {
+    console.log('ScheduleExport detected new sectionId:', newId)
+    await fetchSectionById()
+    await fetchScheduleAssignments()
+    await fetchSectionScheduleAssignments()
+    await fetchTimeColumn()
+    exportPDF()
+  }
+})
+
+// Fetched Data from DB
+const scheduleAssignmentDB = ref([])
+const sectionsDB = ref([])
+
+const days = ['Mon', 'Tue', 'Wed', 'Thurs', 'Fri', 'Sat']
+
+// SCHEDULE DATA
+const schedule = ref({})
+const scheduleDetails = ref([])
+const times = ref([])
+const defaultTimes = [
+  '07:00-09:00',
+  '10:00-13:00',
+  '13:30-15:00',
+  '15:00-16:30',
+  '16:30-17:00'
+].map(parseTimeRange)
+//#endregion
+
+//#region FETCHED DATA FROM DB
+const fetchSectionById = async (id) => {
+  try {
+    const response = await fetch(`http://localhost:3000/sections/${subjectIdToExport.value}`);
+    if (!response.ok) {
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
+    }
+    sectionsDB.value = await response.json();
+
+    // Map numeric semester to text
+    const semesterMap = {
+      1: 'FIRST SEMESTER',
+      2: 'SECOND SEMESTER'
+    };
+
+    // Map numeric year to text
+    const yearMap = {
+      1: 'FIRST YEAR',
+      2: 'SECOND YEAR',
+      3: 'THIRD YEAR',
+      4: 'FOURTH YEAR'
+    };
+
+    semesterAY.value = `${semesterMap[sectionsDB.value.semester] || ''} - ${sectionsDB.value.academic_year}`;
+    course.value = sectionsDB.value.course_name.toUpperCase();
+    year.value = yearMap[sectionsDB.value.year] || '';
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+const fetchScheduleAssignments = async () => {
+  try {
+    const response = await fetch('http://localhost:3000/get-all-schedules')
+    if (!response.ok) throw new Error('Failed to fetch rooms')
+      scheduleAssignmentDB.value = await response.json()
+
+      console.log('Fetched all schedules from DB: ', scheduleAssignmentDB.value)
+  } catch (err) {
+    console.error('Error fetching rooms:', err)
+  }
+}
+
+const fetchSectionScheduleAssignments = async () => {
+  try {
+    const res = await axios.get(`http://localhost:3000/get-schedule/${subjectIdToExport.value}`)
+    if (res.data.success) {
+      schedule.value = res.data.schedule // assign the fetched object to schedule.value
+      console.log('Fetched schedule:', schedule.value)
+    } else {
+      console.warn('No schedule found for this section')
+      schedule.value = {} // reset if nothing found
+    }
+    // Populate scheduleDetails dynamically
+      loadScheduleDetails()
+  } catch (err) {
+    console.error('Error fetching schedule:', err)
+  } 
+}
+
+const fetchTimeColumn = async () => {
+  try {
+    const res = await axios.get(`http://localhost:3000/get-times/${subjectIdToExport.value}`)
+    if (res.data.success && res.data.times.length > 0) {
+      times.value = res.data.times.map(t => ({ start: t.start_time, end: t.end_time }));
+    } else {
+      // Use default times if nothing returned
+      times.value = defaultTimes
+    }
+  } catch (err) {
+    console.error('Error fetching times:', err)
+    // Use default times if error occurs
+    times.value = defaultTimes
+  }
+}
+
+//#region 🕒 TIME CONVERSION UTILITIES
+// 🔹 Converts "7:00" → 420, "1:30" → 90, etc.
+function toMinutes(timeStr) {
+  if (typeof timeStr === 'number') return timeStr // already in minutes
+  if (typeof timeStr !== 'string') return 0 // fallback for null or undefined
+
+  const [hours, minutes] = timeStr.split(':').map(Number)
+  return hours * 60 + (minutes || 0)
+}
+
+// 🔹 Converts minutes → "HH:MM" (e.g., 420 → "07:00")
+function toHHMM(minutes) {
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+}
+
+// 🔹 Converts "7:00-9:00" → { start: 420, end: 540 }
+function parseTimeRange(range) {
+  const [start, end] = range.split('-')
+  return { start: toMinutes(start), end: toMinutes(end) }
+}
+
+// 🔹 Converts 24-hour minutes → 24-hour display format (e.g., 780 → "13:00")
+function formatTime(minutes) {
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+}
+
+// 🔹 Converts minutes → 12-hour format (UI display only)
+function formatTime12Hour(minutes) {
+  if (minutes === null || minutes === undefined) return '--';
+  const hours24 = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  const hours12 = hours24 % 12 || 12;
+  return `${hours12}:${mins.toString().padStart(2, '0')}`;
+}
+
+const loadScheduleDetails = () => {
+  const details = []
+
+  for (const day of Object.keys(schedule.value)) {
+    const timeslots = schedule.value[day]
+    for (const timeRange of Object.keys(timeslots)) {
+      const item = timeslots[timeRange]
+      details.push({
+        code: item.subject_code || 'N/A',
+        title: item.subject || 'N/A',
+        professor: item.teacher || 'N/A'
+      })
+    }
+  }
+
+  // Remove duplicates
+  const uniqueDetails = []
+  const seen = new Set()
+
+  for (const d of details) {
+    const key = `${d.code}|${d.title}|${d.professor}`
+    if (!seen.has(key)) {
+      seen.add(key)
+      uniqueDetails.push(d)
+    }
+  }
+
+  scheduleDetails.value = uniqueDetails
+  console.log('Unique scheduleDetails:', scheduleDetails.value)
+}
+//#endregion
 
 async function exportPDF() {
   const element = document.getElementById('pdf-content')
@@ -16,7 +199,11 @@ async function exportPDF() {
   const pdfHeight = (canvas.height * pdfWidth) / canvas.width
 
   pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
-  pdf.save('schedule.pdf')
+  const fileName = `${sectionsDB.value.section_format}_${sectionsDB.value.academic_year}`.replace(/\s+/g, '_');
+  pdf.save(`${fileName}.pdf`);
+
+  // ✅ Signal ClassScheduling.vue that export is done
+  store.exportDone = true
 }
 </script>
 
@@ -27,7 +214,7 @@ async function exportPDF() {
 
         <!-- Logo + School details -->
         <div style="display: flex; flex-direction: row; gap: 10px; align-items: center; justify-content: center;">
-            <img src="@/assets/login/lccn_logo.webp" id="LCCN-logo" style="width: 95px; height: 95px;"/>
+            <img src="@/assets/login/lccn_logo.webp" id="LCCN-logo" style="width: 105px; height: 105px;"/>
             <div style="display: flex; flex-direction: column; justify-content: center; align-items: center;">
                 <label style="font-family: 'Satisfy', cursive; font-size: 2.4rem;">La Consolacion College</label>
                 <label style="font-size: 0.95rem; font-weight: 600; line-height: 1;">Villa Maria Subd., Deparo, Novaliches, Caloocan City</label>
@@ -41,12 +228,12 @@ async function exportPDF() {
         <div style="display: flex; flex-direction: column; gap: 18px; margin-top: 35px; margin-bottom: 25px;">
             <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
                 <h1 style="font-size: 22px; line-height: 1; margin-bottom: 5px; font-weight: bold;">COLLEGE CLASS PROGRAM</h1>
-                <p style="font-weight: 600;">FIRST SEMESTER - AY 2025-2026</p>
+                <p style="font-weight: 600;">{{ semesterAY }}</p>
             </div>
 
             <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                <label style="font-weight: 600;">BACHELOR OF SCIENCE IN INFORMATION TECHNOLOGY</label>
-                <label style="font-weight: bold; font-size: 22px; line-height: 1; margin-top: 5px; text-decoration: underline;">FOURTH YEAR</label>
+                <label style="font-weight: 600;">{{ course }}</label>
+                <label style="font-weight: bold; font-size: 22px; line-height: 1; margin-top: 5px; text-decoration: underline;">{{ year }}</label>
             </div>
 
         </div>
@@ -65,30 +252,42 @@ async function exportPDF() {
                 <div class="time"
                     @click="toggleEditTimeModal('update', time)">
                         {{ formatTime12Hour(time.start) }} - {{ formatTime12Hour(time.end) }}
-                    <svg class="svg-icon" style="width: 20px; height: 20px; margin-left: 5px; vertical-align: middle; fill: currentcolor; overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"> <path d="M423.381333 85.333333a42.666667 42.666667 0 0 1 4.992 85.034667L423.381333 170.666667H246.186667a75.52 75.52 0 0 0-75.221334 69.290666L170.666667 246.186667v531.712c0 39.594667 30.506667 72.106667 69.290666 75.221333L246.186667 853.333333h531.712a75.52 75.52 0 0 0 75.221333-69.290666L853.333333 777.813333v-177.237333a42.666667 42.666667 0 0 1 85.034667-4.992l0.298667 4.992v177.237333a160.853333 160.853333 0 0 1-152.533334 160.597334L777.813333 938.666667H246.144a160.853333 160.853333 0 0 1-160.597333-152.533334L85.333333 777.813333V246.144a160.853333 160.853333 0 0 1 152.533334-160.597333L246.186667 85.333333h177.237333z" fill="white"></path> <path d="M716.501333 119.168a133.162667 133.162667 0 0 1 194.133334 182.186667l-5.802667 6.144-362.666667 362.666666a42.666667 42.666667 0 0 1-24.576 12.117334L512 682.666667H384a42.666667 42.666667 0 0 1-42.368-37.674667L341.333333 640v-128a42.666667 42.666667 0 0 1 8.789334-25.941333l3.712-4.266667 362.666666-362.666667z m128 60.330667a47.872 47.872 0 0 0-63.488-3.712l-4.181333 3.712L426.666667 529.664v67.626667h67.626666l350.208-350.122667a47.872 47.872 0 0 0 3.712-63.488l-3.712-4.181333z" fill="white"></path> <path d="M652.501333 183.168a42.666667 42.666667 0 0 1 56.32-3.541333l4.010667 3.541333 128 128a42.666667 42.666667 0 0 1-56.32 63.872l-4.010667-3.541333-128-128a42.666667 42.666667 0 0 1 0-60.330667z" fill="white"></path> </svg>
-                </div>
+                    </div>
 
                 <div v-for="day in days" 
                     :key="day" 
-                    class="cell"
-                    @click="handleCellClick(day, time)"
-                    :class="{ 'clicked-cell': isCellActive(day, time) }">
+                    class="cell">
                     <template v-if="schedule[day] && schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`]">
-                        <p>Room: {{ schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].room }}</p>
+                        <p>Rm: {{ schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].room }}</p>
                         <div style="display: flex; flex-direction: row; gap: 4px;">
-                            <p>{{ schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].subject }}</p>
-                            <p>
-                            {{ schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].type 
-                                ? `(${schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].type})` 
-                                : '' }}
-                            </p>
+                            <p>{{ schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].subject_code }}</p>
                         </div>
-                        <p>{{ schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].teacher }}</p>
+                        <p>Mr. {{ schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].teacher.split(',')[0] }}</p>
                         
                     </template>
                 </div>
             </template>
         </div>
+
+        <!-- Table Details -->
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>SUBJECT CODE</th>
+              <th>DESCRIPTIVE TITLE</th>
+              <th>PROFESSOR</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(subject, index) in scheduleDetails" :key="index">
+              <td>{{ subject.code }}</td>
+              <td>{{ subject.title }}</td>
+              <td>{{ subject.professor }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- 🖨️ Export button -->
@@ -101,6 +300,11 @@ async function exportPDF() {
   padding: 30px;
   background-color: #f5f6fa;
   min-height: 100vh;
+  box-sizing: border-box;
+
+  position: absolute; 
+  top: -9999px; 
+  left: -9999px;
 }
 
 .pdf-box {
@@ -134,10 +338,12 @@ async function exportPDF() {
 ============================= */
 .schedule-grid {
     display: grid;
-    grid-template-columns: minmax(140px, 0.8fr) repeat(6, 1fr);
+    grid-template-columns: minmax(95px, auto) repeat(6, 1fr);
     grid-auto-rows: auto;
+    width: 100%; /* ensure grid doesn't overflow container */
     text-align: center;
     border-collapse: collapse;
+    margin-bottom: 20px;
 }
 
 /* Header Row */
@@ -150,7 +356,8 @@ async function exportPDF() {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 45px;
+    height: 38px;
+    font-size: 14px;
 }
 
 .time-label {
@@ -159,7 +366,7 @@ async function exportPDF() {
 
 /* Time Column */
 .time {
-    height: 95px;
+    height: 75px;
     border: 1px solid rgba(179, 179, 179, 0.6);
     background-color: #6799C8;
     color: white;
@@ -169,10 +376,7 @@ async function exportPDF() {
     justify-content: center;
     cursor: pointer;
     transition: all ease 0.1s;
-}
-
-.time:hover {
-    background-color: #497dad;
+    font-size: 14px;
 }
 
 /* Default Cell */
@@ -180,56 +384,51 @@ async function exportPDF() {
     display: flex;
     flex-direction: column;
     border: 1px solid rgba(179, 179, 179, 0.6);
-    text-align: left;
-    padding: 10px;
+    text-align: center;
+    justify-content: center;
+    align-items: center; /* Center all children horizontally */
+    padding: 6px;
     font-size: 14px;
     cursor: pointer;
     transition: all ease 0.1s;
-    min-width: 135px;
+    min-width: 110px;
+    width: 100%; /* ensure full width */
+    box-sizing: border-box;
+    word-break: break-word; /* allow text to wrap */
 }
 
-.cell > p:nth-of-type(1) {
-  display: inline-block; 
-  width: auto;
-  max-width: 85%; 
-  white-space: nowrap; 
-  overflow: hidden; 
-  text-overflow: ellipsis;
-  margin-left: auto;
-    
-}
-
-.cell > div {
-  margin-top: auto;
-  margin-bottom: 1px;
-  height: 18px;
-}
-
-.cell > div > p:nth-of-type(1) {
-  display: inline-block; 
-  width: auto;
-  max-width: 85%; 
-  white-space: nowrap; 
-  overflow: hidden; 
-  text-overflow: ellipsis;
-  font-weight: 600; 
-  font-size: 0.90rem;
-}
-
-.cell > div > p:nth-of-type(2) {
-  display: inline-block;
-  white-space: nowrap; 
-  font-weight: 600; 
-  font-size: 0.90rem;
-}
-
+/* Room and Teacher */
+.cell > p:nth-of-type(1),
 .cell > p:nth-of-type(2) {
   display: inline-block; 
   width: auto;
-  max-width: 85%; 
+  max-width: 95%; 
   white-space: nowrap; 
   overflow: hidden; 
   text-overflow: ellipsis;
+  text-align: center;
+  font-weight: 600;
+}
+
+.cell > div {
+  margin: 2px 0;
+  height: 18px;
+  justify-content: center; /* Center horizontally */
+  align-items: center;     /* Center vertically */  
+  gap: 4px;
+  width: 100%; /* Optional: make it span full cell width */
+}
+
+/* Subject */
+.cell > div > p:nth-of-type(1) {
+  display: inline-block; 
+  width: auto;
+  max-width: 95%; 
+  white-space: nowrap; 
+  overflow: hidden; 
+  text-overflow: ellipsis;
+  font-size: 14px;
+  text-align: center; /* Ensure text is centered */
 }
 
 /* Highlight Filled Cells */
@@ -240,8 +439,52 @@ async function exportPDF() {
     transition: all ease 0.1s;
 }
 
-/* Highlight Filled Cells */
-.cell:not(:empty):hover {
-    background-color: #cadfc2;
+/* =============================
+   🗓️ SCHEDULE DETAILS
+============================= */
+/* Container */
+.table-container {
+  width: 100%;
+  overflow-x: auto; /* Horizontal scroll if table is too wide */
+  margin-top: 1rem;
+  font-family: Arial, sans-serif;
 }
+
+/* Table Styles */
+.table-container table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  min-width: 500px; /* optional */
+}
+
+.table-container thead th {
+  color: white;
+  padding: 8px 12px;
+  font-weight: bold;
+  font-size: 14px;
+  vertical-align: middle;
+}
+
+/* Table Header */
+.table-container thead th:nth-child(1) {
+  background-color: #3571B7; /* Blue header */
+}
+
+.table-container thead th:nth-child(2) {
+  background-color: #009CC6; /* Blue header */
+}
+
+.table-container thead th:nth-child(3) {
+  background-color: #009CC6; /* Blue header */
+  border-left: 1px solid rgba(179, 179, 179, 0.6);
+}
+
+/* Table Body */
+.table-container tbody td {
+  padding: 8px 12px;
+  border: 1px solid rgba(179, 179, 179, 0.6);
+  font-size: 14px;
+}
+
 </style>

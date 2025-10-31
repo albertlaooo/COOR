@@ -2,6 +2,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import axios from "axios"
+import { store } from '../store.js'
 
 //#region 🧱 REFS & STATE
 const schedules = ref([])
@@ -16,6 +17,7 @@ const isVisibleChooseTeacher = ref(false)
 
 const exportScheduleBy = ref('')
 const exportType = ref('')
+const isExporting = ref(false)
 
 const showErrorInput = ref(false)
 
@@ -304,6 +306,7 @@ function exportToPDFConfirm() {
     let sectionId = null;
     let courseId = null;
     let teacherId = null;
+
     
     if (exportScheduleBy.value === 'section') {
         if (exportType.value === 'individual') {
@@ -313,8 +316,8 @@ function exportToPDFConfirm() {
                 if (sec) {
                     sectionId = sec.section_id;
                 }
-                console.log({ sectionId });
-                toggleExportToPDFModal();
+                isExporting.value = true
+                store.sectionId = sec.section_id // update the store
             } else {
                 showErrorInput.value = true;
 
@@ -367,7 +370,6 @@ function exportToPDFConfirm() {
         }
         
     }
-
     toggleExportToPDFModal
 }
 
@@ -473,6 +475,20 @@ watch(
   () => {
     fetchAllSchedules()
     fetchSections()
+  }
+)
+
+// Export finish?
+watch(
+  () => store.exportDone,
+  (done) => {
+    if (done) {
+        toggleExportToPDFModal()
+        setTimeout(() => {
+            isExporting.value = false;
+        }, 200);
+        store.exportDone = false
+    }
   }
 )
 //#endregion
@@ -710,7 +726,17 @@ watch(
 
                     <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
                         <button @click="toggleExportToPDFModal()" class="cancelBtn">Cancel</button>
-                        <button @click="exportToPDFConfirm" style="width: 92px;">Export</button>
+                        <button 
+                            @click="exportToPDFConfirm" 
+                            style="width: 92px;"
+                            :disabled="isExporting" 
+                            :style="{
+                                width: 'fit-content',
+                                borderColor: isExporting ? 'rgba(7, 134, 212, 0.42)' : '',
+                                backgroundColor: isExporting ? 'rgba(7, 134, 212, 0.93)' : '',
+                                color: isExporting ? 'white' : '',
+                                cursor: isExporting ? 'not-allowed' : 'pointer'
+                            }">{{ isExporting ? 'Exporting..' : 'Export' }}</button>
                     </div>
                </div>
             </div>

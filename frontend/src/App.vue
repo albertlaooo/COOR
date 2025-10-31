@@ -1,13 +1,13 @@
 <template>
   <div id="app">
     <router-view />
-    <!-- <ReportPage /> --> 
+    <ScheduleExport/>
   </div>
 </template>
 
 
 <script setup>
-import ReportPage from './components/schedule_export/ScheduleExport.vue'
+import ScheduleExport from './components/schedule_export/ScheduleExport.vue'
 </script>
 
 <style>
