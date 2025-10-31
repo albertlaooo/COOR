@@ -1,7 +1,9 @@
 import { reactive, watch } from 'vue'
 
 export const store = reactive({
-  sectionId: '', // initially empty
+  sectionId: '', // Individual
+  byCourseOrAll: '',
+  bulkSectionId: [], // All
   exportDone: false     // PDF completion
 })
 
@@ -11,6 +13,24 @@ watch(
     console.log(`store.sectionId changed: ${oldVal} → ${newVal}`)
   }
 )
+
+watch(
+  () => store.byCourseOrAll,
+  (newVal, oldVal) => {
+    console.log(`store.sectionOrAll changed: ${oldVal} → ${newVal}`)
+  }
+)
+
+
+// Watch the "All sections"
+watch(
+  () => store.bulkSectionId,
+  (newVal) => {
+    console.log('Is section all export array updated:', newVal)
+  },
+  { deep: true } // Watch inside array changes too (e.g., push, splice)
+)
+
 
 watch(
   () => store.exportDone,

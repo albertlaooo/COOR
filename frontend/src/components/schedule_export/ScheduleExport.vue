@@ -1,16 +1,22 @@
 <script setup>
-import html2canvas from 'html2canvas'
-import jsPDF from 'jspdf'
 import { ref, onMounted, watch, computed } from 'vue'
 import axios from 'axios'
+import html2canvas from 'html2canvas'
+import jsPDF from 'jspdf'
+import JSZip from 'jszip'
+import { saveAs } from 'file-saver'
 import { store } from '../store.js'
 
 //#region 🧱 REFS & STATE
-const subjectIdToExport = computed(() => store.sectionId)
+const subjectIdToExport = computed(() => store.sectionId) // Section Individual
+const bulkSectionIdToExport = computed(() => store.bulkSectionId) // Section All
+const isItBulk = ref(false)
+
 const semesterAY = ref('')
 const course = ref('')
 const year = ref('')
 
+// Section Individual
 watch(subjectIdToExport, async (newId) => {
   if (newId) {
     console.log('ScheduleExport detected new sectionId:', newId)
@@ -19,6 +25,68 @@ watch(subjectIdToExport, async (newId) => {
     await fetchSectionScheduleAssignments()
     await fetchTimeColumn()
     exportPDF()
+  }
+})
+
+
+// Bulk Section Id
+watch(bulkSectionIdToExport, async (newVal) => {
+  if (Array.isArray(newVal) && newVal.length > 0) {
+    console.log('Exporting all sections:', newVal)
+    isItBulk.value = true
+
+    const zip = new JSZip()
+
+    for (const id of newVal) {
+      try {
+        // 🔹 Update the section ID being processed
+        store.sectionId = id
+        await fetchSectionById(id)
+        await fetchScheduleAssignments()
+        await fetchSectionScheduleAssignments()
+        await fetchTimeColumn()
+
+        // 🔹 Generate the PDF in memory
+        const element = document.getElementById('pdf-content')
+        const canvas = await html2canvas(element, { scale: 2 })
+        const imgData = canvas.toDataURL('image/png')
+
+        const pdf = new jsPDF('p', 'mm', 'letter')
+        const pdfWidth = pdf.internal.pageSize.getWidth()
+        const pdfHeight = (canvas.height * pdfWidth) / canvas.width
+
+        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
+
+        const fileName = `${sectionsDB.value.section_format}_${sectionsDB.value.academic_year}`
+          .replace(/\s+/g, '_')
+
+        // 🔹 Add to ZIP as Blob
+        const pdfBlob = pdf.output('blob')
+        zip.file(`${fileName}.pdf`, pdfBlob)
+
+        console.log(`Added ${fileName}.pdf to zip`)
+      } catch (err) {
+        console.error(`Failed to export section ${id}:`, err)
+      }
+    }
+
+    // 🔹 Once all are processed, generate the zip and download
+    const zipBlob = await zip.generateAsync({ type: 'blob' })
+
+    if(store.byCourseOrAll === 'all'){
+      const semLabel = sectionsDB.value.semester == 1 ? 'Sem1' : 'Sem2';
+      saveAs(zipBlob, `Sections_${semLabel}_${sectionsDB.value.academic_year}.zip`);
+    }
+
+    else if(store.byCourseOrAll === 'byCourse'){
+      const semLabel = sectionsDB.value.semester == 1 ? 'Sem1' : 'Sem2';
+      const fileName = `${sectionsDB.value.course_name}_${semLabel}_${sectionsDB.value.academic_year}`.replace(/\s+/g, '_');
+      saveAs(zipBlob, `${fileName}.zip`);
+    }
+
+    store.exportDone = true
+    isItBulk.value = false
+    console.log('✅ All sections exported and zipped successfully!')
   }
 })
 
@@ -200,10 +268,15 @@ async function exportPDF() {
 
   pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight)
   const fileName = `${sectionsDB.value.section_format}_${sectionsDB.value.academic_year}`.replace(/\s+/g, '_');
-  pdf.save(`${fileName}.pdf`);
 
-  // ✅ Signal ClassScheduling.vue that export is done
-  store.exportDone = true
+  if(!isItBulk.value){
+    pdf.save(`${fileName}.pdf`);
+
+    // ✅ Signal ClassScheduling.vue that export is done
+    store.exportDone = true
+  }
+
+
 }
 </script>
 

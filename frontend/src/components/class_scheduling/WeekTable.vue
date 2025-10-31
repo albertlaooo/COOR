@@ -137,6 +137,7 @@ const fetchTimeColumn = async () => {
     } else {
       // Use default times if nothing returned
       times.value = defaultTimes
+      originalTimes.value = JSON.parse(JSON.stringify(defaultTimes));
     }
   } catch (err) {
     console.error('Error fetching times:', err)
@@ -1048,6 +1049,7 @@ const saveScheduleToDB = async () => {
         // ✅ Sync to prevent unsaved changes prompt
         originalSchedule.value = JSON.parse(JSON.stringify(schedule.value))
         originalTimes.value = JSON.parse(JSON.stringify(times.value))
+        originalDefaultTimes.value = JSON.parse(JSON.stringify(defaultTimes.value))
       } else {
         alert('Failed to save')
         return
@@ -1124,11 +1126,14 @@ const originalSchedule = ref({})
 const originalTimes = ref([])
 
 function hasUnsavedChanges() {
-  return (
-    JSON.stringify(schedule.value) !== JSON.stringify(originalSchedule.value) ||
-    JSON.stringify(times.value) !== JSON.stringify(originalTimes.value)
-  )
+
+  const scheduleChanged = JSON.stringify(schedule.value) !== JSON.stringify(originalSchedule.value)
+  const timesChanged = JSON.stringify(times.value) !== JSON.stringify(originalTimes.value)
+
+  return scheduleChanged || timesChanged
 }
+
+
 
 function toggleBackBtnModal() {
   if (hasUnsavedChanges()) {

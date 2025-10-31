@@ -192,26 +192,26 @@ const groupedSections = computed(() => {
 const completedSectionsLatest = computed(() => {
   if (!sections.value.length) return []
 
-  // Sort sections by academic year descending, then semester descending
-  const sortedSections = [...sections.value].sort((a, b) => {
+  // Filter only completed sections
+  const completedSections = sections.value.filter(sec => sec.schedule_status === 'Complete')
+  if (!completedSections.length) return []
+
+  // Sort by academic year (desc) then semester (desc)
+  const sorted = [...completedSections].sort((a, b) => {
     const yearA = parseInt(a.academic_year.split('-')[0])
     const yearB = parseInt(b.academic_year.split('-')[0])
     if (yearB !== yearA) return yearB - yearA
-    return b.semester - a.semester // assuming 2 = 2nd sem, 1 = 1st sem
+    return b.semester - a.semester
   })
 
-  // Filter only completed sections
-  const completedSections = sortedSections.filter(sec => sec.schedule_status === 'Complete')
+  // Get the latest combination of academic_year and semester
+  const latestAY = sorted[0].academic_year
+  const latestSem = sorted[0].semester
 
-  // Keep only the latest year/semester for each section (by section_id)
-  const latestSectionsMap = {}
-  completedSections.forEach(sec => {
-    if (!latestSectionsMap[sec.section_id]) {
-      latestSectionsMap[sec.section_id] = sec
-    }
-  })
-
-  return Object.values(latestSectionsMap)
+  // Filter only sections that match that latest combination
+  return sorted.filter(sec => 
+    sec.academic_year === latestAY && sec.semester === latestSem
+  )
 })
 
 // Filtered sections for search input
@@ -333,8 +333,14 @@ function exportToPDFConfirm() {
                 if (sec) {
                     courseId = sec.course_id;
                 }
-                console.log({ courseId });
-                toggleExportToPDFModal();
+                isExporting.value = true
+                store.byCourseOrAll = 'byCourse'
+                    // Filter sections with the same course_name
+                    const filteredSections = completedSectionsLatest.value.filter(
+                    sec => sec.course_name === chooseCourse.value
+                )
+                // Store only their section_id values
+                store.bulkSectionId = filteredSections.map(sec => sec.section_id)
             } else {
                 showErrorInput.value = true;
 
@@ -344,7 +350,9 @@ function exportToPDFConfirm() {
                 return;
             }
         } else if (exportType.value === 'all') { 
-
+            isExporting.value = true
+            store.byCourseOrAll = 'all'
+            store.bulkSectionId = completedSectionsLatest.value.map(sec => sec.section_id)
         }
     } else if (exportScheduleBy.value === 'teacher') {
         if (exportType.value === 'individual') {
@@ -615,7 +623,7 @@ watch(
 
         <!-- Export to PDF Modal -->
         <transition name="fade">
-            <div v-show="isVisibleExportToPDFModal" class="modal" @click.self="toggleExportToPDFModal()">
+            <div v-show="isVisibleExportToPDFModal" class="modal" @click.self="!isExporting && toggleExportToPDFModal()">
                <div class="modal-content">
                     <h2 style="line-height: 0; margin: 12px 0px; align-self: flex-start;">Export to PDF</h2>
 
@@ -623,7 +631,7 @@ watch(
                         <div style="display: flex; flex-direction: row; gap: 14px;">
                             <div style="flex: 1;">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Export Schedule By</p>
-                                <select v-model="exportScheduleBy" style="width: 100%;">
+                                <select v-model="exportScheduleBy" style="width: 100%;" :disabled="isExporting" >
                                     <option value="section">Section</option>
                                     <option value="teacher">Teacher</option>
                                 </select>
@@ -631,7 +639,7 @@ watch(
 
                             <div style="flex: 1;">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Export Type</p>
-                                <select v-model="exportType" style="width: 100%;">
+                                <select v-model="exportType" style="width: 100%;" :disabled="isExporting" >
                                     <!-- Only show these if exportScheduleBy has a value -->
                                     <template v-if="exportScheduleBy">
                                     <option value="individual">Individual</option>
@@ -720,12 +728,12 @@ watch(
                         </div>
                     </div>
 
-                    <div style="display: flex;">
-                        <p style="color: #444141; font-size: 14px"><strong>Note:</strong> Only schedules from the latest academic year and semester will be exported.</p>
+                    <div style="display: flex; flex-direction: row;">
+                        <p style="color: #444141; font-size: 14px"><strong>Note:</strong> Only schedules from the latest academic year and semester will be exported. Ensure that all schedules are marked as Completed.</p>
                     </div>
 
                     <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
-                        <button @click="toggleExportToPDFModal()" class="cancelBtn">Cancel</button>
+                        <button @click="toggleExportToPDFModal()" class="cancelBtn" :disabled="isExporting">Cancel</button>
                         <button 
                             @click="exportToPDFConfirm" 
                             style="width: 92px;"
@@ -798,7 +806,7 @@ watch(
         padding-right: 50px;
         box-shadow: -2px 0 8px rgba(0,0,0,0.2);
         border-radius: 6px;
-        gap: 30px;
+        gap: 26px;
     }
 
     .export-btn {
