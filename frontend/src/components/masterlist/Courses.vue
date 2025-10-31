@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed } from "vue"
+import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue"
 import { useRouter } from 'vue-router'
 import axios from "axios"
 
@@ -310,50 +310,77 @@ const courseButton = ref('')
 const courseHandler = ref('')
 const isVisibleCourseModal = ref(false)
 
+const errorMessage = ref('')
+const isCourseNameOk = ref(false)
+const isCourseCodeOk = ref(false)
+
 const courseConfirm = async () => {
-    if (courseHandler.value === 'add') {
-        try {
+    // 🔹 Blank Input Validation
+    if (!courseName.value.trim() || !courseCode.value.trim()) {
+        showErrorInput.value = false;
+        setTimeout(() => (showErrorInput.value = true), 0);
+
+        isCourseNameOk.value = !!courseName.value.trim();
+        isCourseCodeOk.value = !!courseCode.value.trim();
+
+        errorMessage.value = "Please fill in all required fields.";
+        return;
+    }
+
+    try {
+        if (courseHandler.value === "add") {
             const res = await axios.post("http://localhost:3000/add-course", {
                 course_image: courseImage.value,
-                course_name: courseName.value,
-                course_code: courseCode.value.toUpperCase()
-            })
-            console.log(res.data.message)
-        } catch (error) {
-            console.error("Error:", error)
-            alert("Failed to add course.")
+                course_name: courseName.value.trim(),
+                course_code: courseCode.value.trim().toUpperCase(),
+            });
+        } 
+        else if (courseHandler.value === "update") {
+            const res = await axios.put(
+                `http://localhost:3000/update-course/${selectedCourse.value.id}`,
+                {
+                    course_image: courseImage.value,
+                    course_name: courseName.value.trim(),
+                    course_code: courseCode.value.trim().toUpperCase(),
+                }
+            );
         }
-        fetchCourses()
-        toggleCourseModal('cancel')
 
-        // reset
-        courseImage.value = 0
-        courseName.value = ''
-        courseCode.value = ''
-    }
+        // 🔹 Refresh and reset
+        fetchCourses();
+        toggleCourseModal("cancel");
+    } 
+    catch (error) {
+        // 🔹 Duplicate check (based on backend response)
+        const message = error.response?.data?.message;
 
-    else if (courseHandler.value === 'update') {
-        try {
-            const res = await axios.put(`http://localhost:3000/update-course/${selectedCourse.value.id}`, {
-                course_image: courseImage.value,
-                course_name: courseName.value,
-                course_code: courseCode.value.toUpperCase()
-            })
-            console.log(res.data.message)
-            fetchCourses()
-            selectedCourse.value = null
-            toggleCourseModal('cancel')
+        // 🔹 Reset flags first
+        isCourseNameOk.value = true;
+        isCourseCodeOk.value = true;
+        let duplicateFound = false;
 
-            // reset
-            courseImage.value = 0
-            courseName.value = ''
-            courseCode.value = ''
-        } catch (error) {
-            console.error("Error:", error)
-            alert("Failed to update course.")
+        if (message.includes("Course name and code already exist.")) {
+            isCourseNameOk.value = false;
+            isCourseCodeOk.value = false;
+            duplicateFound = true;
+        } 
+        else if (message.includes("Course name already exists")) {
+            isCourseNameOk.value = false;
+            duplicateFound = true;
+        } 
+        else if (message.includes("Course code already exists")) {
+            isCourseCodeOk.value = false;
+            duplicateFound = true;
         }
+
+        if (duplicateFound) {
+            showErrorInput.value = false;
+            setTimeout(() => (showErrorInput.value = true), 0);
+        }
+
+        errorMessage.value = message || "Failed to save course.";
     }
-}
+};
 
 function toggleCourseModal(which) {
     if (which === 'add') {
@@ -379,10 +406,37 @@ function toggleCourseModal(which) {
             courseCode.value = ''
             courseButton.value = ''
             courseHandler.value = ''
-        }, 100)
+            selectedCourse.value = null
+            showErrorInput.value = false;
+            isCourseNameOk.value = false;
+            isCourseCodeOk.value = false;
+        }, 200)
         isVisibleCourseModal.value = !isVisibleCourseModal.value
     }
 }
+
+// 🕵️ Watchers to auto-clear red border when typing
+watch(courseName, (newVal) => {
+    if (newVal.trim() !== "") {
+        isCourseNameOk.value = true;
+    }
+
+    // ✅ If both inputs are OK, hide error
+    if (isCourseNameOk.value && isCourseCodeOk.value) {
+        showErrorInput.value = false;
+    }
+    });
+
+watch(courseCode, (newVal) => {
+    if (newVal.trim() !== "") {
+        isCourseCodeOk.value = true;
+    }
+
+    // ✅ If both inputs are OK, hide error
+    if (isCourseNameOk.value && isCourseCodeOk.value) {
+        showErrorInput.value = false;
+    }
+});
 //#endregion
 
 //#region 🖼️ CHOOSE IMAGE MODAL
@@ -554,13 +608,17 @@ function toggleSubjectAssignModal() { isVisibleSubjectAssign.value = !isVisibleS
                         <!-- Course Name -->
                         <div>
                             <p class="paragraph--black-bold" style="line-height: 1.8;">Course Name</p>
-                            <input v-model="courseName"></input>
+                            <input v-model="courseName"
+                            :class="{ 'error-input-border': showErrorInput && !isCourseNameOk }"></input>
                         </div>
 
                         <div>
                             <p class="paragraph--black-bold" style="line-height: 1.8;">Course Code</p>
-                            <input v-model="courseCode" style="display: flex; flex-direction: column; width: 120px;"></input>
+                            <input v-model="courseCode" style="display: flex; flex-direction: column; width: 120px;"
+                            :class="{ 'error-input-border': showErrorInput && !isCourseCodeOk }"></input>
                         </div>
+
+                        <label v-show="showErrorInput" style="color: red; font-size: 0.95rem; margin-right: auto;">{{ errorMessage }}</label>
                     </div>
 
                     <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">

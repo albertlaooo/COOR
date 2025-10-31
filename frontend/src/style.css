@@ -274,7 +274,8 @@ select {
 }
 
 .error-input-border {
-  border: 2px solid red !important;
+  outline: 2px solid red !important;
+  outline-offset: -2px;
   animation: scalePulse 0.3s ease;
 }
 

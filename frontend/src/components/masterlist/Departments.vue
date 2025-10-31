@@ -1,5 +1,5 @@
 <script setup>
-    import { ref, onMounted, onBeforeUnmount, computed } from "vue"
+    import { ref, onMounted, onBeforeUnmount, computed, watch } from "vue"
     import { useRouter } from 'vue-router'
     import axios from "axios";
 
@@ -199,55 +199,80 @@
     const departmentButton = ref('');
     const departmentHandler = ref('');
     const isVisibleDepartmentModal = ref(false)
+    
+    const showErrorInput = ref(false)
+    const errorMessage = ref('')
+    const isDepartmentNameOk = ref(false)
+    const isDepartmentCodeOk = ref(false)
 
     const departmentConfirm = async () => {
+        // 🔹 Blank Input Validation
+        if (!departmentName.value.trim() || !departmentCode.value.trim()) {
+            showErrorInput.value = false;
+            setTimeout(() => (showErrorInput.value = true), 0);
 
-        if(departmentHandler.value === 'add'){
-            try {
-                const res = await axios.post("http://localhost:3000/add-department", {
-                    department_image: departmentImage.value,
-                    department_name: departmentName.value,
-                    department_code: departmentCode.value.toUpperCase()
-                });
-                console.log(res.data.message);
-            } catch (error) {
-                console.error("Error:", error);
-                alert("Failed to add department.");
-            }
-            fetchDepartments();
-            toggleDepartmentModal('cancel');
-            
-            // Reset Inputs
-            departmentImage.value = 0;
-            departmentName.value = '';
-            departmentCode.value = '';
-            }
+            isDepartmentNameOk.value = !!departmentName.value.trim();
+            isDepartmentCodeOk.value = !!departmentCode.value.trim();
 
-        else if(departmentHandler.value === 'update'){
-            try {
-            const res = await axios.put(`http://localhost:3000/update-department/${selectedDept.value.id}`, {
-            department_image: departmentImage.value,
-            department_name: departmentName.value,
-            department_code: departmentCode.value.toUpperCase()
+            errorMessage.value = "Please fill in all required fields.";
+            return;
+        }
+
+        try {
+            if (departmentHandler.value === "add") {
+            const res = await axios.post("http://localhost:3000/add-department", {
+                department_image: departmentImage.value,
+                department_name: departmentName.value.trim(),
+                department_code: departmentCode.value.trim().toUpperCase(),
             });
 
-            console.log(res.data.message);
-            alert("Department updated successfully!");
-            
-            fetchDepartments();
-            selectedDept.value = null;
-            toggleDepartmentModal('cancel');
-
-            // Reset Inputs
-            departmentImage.value = 0;
-            departmentName.value = '';
-            departmentCode.value = '';
-            } catch (error) {
-                console.error("Error:", error);
-                alert("Failed to update department.");
+            } else if (departmentHandler.value === "update") {
+            const res = await axios.put(
+                `http://localhost:3000/update-department/${selectedDept.value.id}`,
+                {
+                department_image: departmentImage.value,
+                department_name: departmentName.value.trim(),
+                department_code: departmentCode.value.trim().toUpperCase(),
+                }
+            );
             }
+
+            // 🔹 Refresh and reset
+            fetchDepartments();
+            toggleDepartmentModal("cancel");
+        } catch (error) {
+            // 🔹 Duplicate check (based on backend response)
+            const message = error.response?.data?.message;
+
+             // 🔹 Reset flags first
+            isDepartmentNameOk.value = true;
+            isDepartmentCodeOk.value = true;
+            let duplicateFound = false;
+
+            if (message.includes("Department name and code already exist.")) {
+                isDepartmentNameOk.value = false;
+                isDepartmentCodeOk.value = false;
+                duplicateFound = true;
+            }
+
+            // 🔹 Check both duplicate types and flag both if needed
+            else if (message.includes("Department name already exists")) {
+                isDepartmentNameOk.value = false;
+                duplicateFound = true;
+            }
+            else if (message.includes("Department code already exists")) {
+                isDepartmentCodeOk.value = false;
+                duplicateFound = true;
+            }
+
+            if (duplicateFound) {
+            showErrorInput.value = false;
+            setTimeout(() => (showErrorInput.value = true), 0);
+            }
+
+            errorMessage.value = message || "Failed to save department."
         }
-    }
+    };
 
     function toggleDepartmentModal(which) {
         if(which === 'add'){
@@ -275,11 +300,37 @@
                 departmentCode.value = '';
                 departmentButton.value = '';
                 departmentHandler.value = '';
-            }, 100);
+                showErrorInput.value = false;
+                isDepartmentNameOk.value = false;
+                isDepartmentCodeOk.value = false;
+            }, 200);
 
             isVisibleDepartmentModal.value = !isVisibleDepartmentModal.value
         }
     }
+
+    // 🕵️ Watchers to auto-clear red border when typing
+    watch(departmentName, (newVal) => {
+        if (newVal.trim() !== "") {
+            isDepartmentNameOk.value = true;
+        }
+
+        // ✅ If both inputs are OK, hide error
+        if (isDepartmentNameOk.value && isDepartmentCodeOk.value) {
+            showErrorInput.value = false;
+        }
+        });
+
+    watch(departmentCode, (newVal) => {
+        if (newVal.trim() !== "") {
+            isDepartmentCodeOk.value = true;
+        }
+
+        // ✅ If both inputs are OK, hide error
+        if (isDepartmentNameOk.value && isDepartmentCodeOk.value) {
+            showErrorInput.value = false;
+        }
+    });
 
     /////////////////////////////// Choose Image Modal ////////////////////////////
     const isVisibleChooseImage = ref(false)
@@ -616,19 +667,25 @@
                         <!-- Department Name -->
                         <div>
                             <p class="paragraph--black-bold" style="line-height: 1.8;">Department Name</p>
-                            <input v-model="departmentName"></input>
+                            <input v-model="departmentName"
+                            :class="{ 'error-input-border': showErrorInput && !isDepartmentNameOk }"></input>
                         </div>
 
                         <div>
                             <p class="paragraph--black-bold" style="line-height: 1.8;">Department Code</p>
-                            <input v-model="departmentCode" style="display: flex; flex-direction: column; width: 120px;"></input>
+                            <input v-model="departmentCode" style="display: flex; flex-direction: column; width: 120px;"
+                            :class="{ 'error-input-border': showErrorInput && !isDepartmentCodeOk }"></input>
                         </div>
+                        
+                        <label v-show="showErrorInput" style="color: red; font-size: 0.95rem; margin-right: auto;">{{ errorMessage }}</label>
                     </div>
 
                     <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
                         <button @click="toggleDepartmentModal('cancel')" class="cancelBtn">Cancel</button>
                         <button @click="departmentConfirm()">{{ departmentButton }}</button>
                     </div>
+
+                    
                </div>
             </div>
         </transition>

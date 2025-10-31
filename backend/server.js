@@ -171,13 +171,13 @@ db.serialize(() => {
         );
     `);
 
-    db.run(`
-        CREATE TABLE IF NOT EXISTS Rooms (
-          room_id INTEGER PRIMARY KEY AUTOINCREMENT,
-          room_code TEXT NOT NULL UNIQUE,
-          room_type TEXT NOT NULL
-        );
-    `);
+      db.run(`
+          CREATE TABLE IF NOT EXISTS Rooms (
+            room_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_code TEXT NOT NULL UNIQUE,
+            room_type TEXT NOT NULL
+          );
+      `);
 
     db.run(`
         CREATE TABLE IF NOT EXISTS ScheduleAssignments (
@@ -961,23 +961,57 @@ app.post("/add-department", (req, res) => {
   const { department_image, department_name, department_code } = req.body;
 
   if (!department_name || !department_code) {
-    return res.status(400).json({ success: false, message: "Missing required fields" });
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing required fields" });
   }
 
-  const sql = `
-    INSERT INTO Departments (department_image, department_name, department_code)
-    VALUES (?, ?, ?)
+  const checkSql = `
+    SELECT department_name, department_code FROM Departments
+    WHERE LOWER(department_name) = LOWER(?)
+       OR LOWER(department_code) = LOWER(?)
   `;
 
-  db.run(sql, [department_image, department_name, department_code], function (err) {
+  db.all(checkSql, [department_name, department_code], (err, rows) => {
     if (err) {
-      console.error("Error inserting department:", err.message);
-      return res.status(500).json({ success: false, message: "Database error", error: err.message });
+      console.error("Error checking duplicates:", err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
     }
-    res.json({ 
-      success: true, 
-      message: "Department added successfully", 
-      department_id: this.lastID 
+
+    if (rows.length > 0) {
+      const nameExists = rows.some(
+        (r) => r.department_name.toLowerCase() === department_name.toLowerCase()
+      );
+      const codeExists = rows.some(
+        (r) => r.department_code.toLowerCase() === department_code.toLowerCase()
+      );
+
+      let message = "";
+      if (nameExists && codeExists) {
+        message = "Department name and code already exist.";
+      } else if (nameExists) {
+        message = "Department name already exists.";
+      } else if (codeExists) {
+        message = "Department code already exists.";
+      }
+
+      return res.status(400).json({ success: false, message });
+    }
+
+    const insertSql = `
+      INSERT INTO Departments (department_image, department_name, department_code)
+      VALUES (?, ?, ?)
+    `;
+    db.run(insertSql, [department_image, department_name, department_code], function (err) {
+      if (err) {
+        console.error("Error inserting department:", err.message);
+        return res.status(500).json({ success: false, message: "Database error" });
+      }
+      res.json({
+        success: true,
+        message: "Department added successfully",
+        department_id: this.lastID,
+      });
     });
   });
 });
@@ -998,26 +1032,71 @@ app.put("/update-department/:id", (req, res) => {
   const { department_image, department_name, department_code } = req.body;
 
   if (!department_name || !department_code) {
-    return res.status(400).json({ success: false, message: "Missing required fields" });
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing required fields" });
   }
 
-  const sql = `
-    UPDATE Departments
-    SET department_image = ?, department_name = ?, department_code = ?
-    WHERE department_id = ?
+  const checkSql = `
+    SELECT department_name, department_code FROM Departments
+    WHERE (LOWER(department_name) = LOWER(?)
+       OR LOWER(department_code) = LOWER(?))
+       AND department_id != ?
   `;
 
-  db.run(sql, [department_image, department_name, department_code, id], function (err) {
+  db.all(checkSql, [department_name, department_code, id], (err, rows) => {
     if (err) {
-      console.error("Error updating department:", err.message);
-      return res.status(500).json({ success: false, message: "Database error", error: err.message });
+      console.error("Error checking duplicates:", err.message);
+      return res
+        .status(500)
+        .json({ success: false, message: "Database error" });
     }
 
-    if (this.changes === 0) {
-      return res.status(404).json({ success: false, message: "Department not found" });
+    if (rows.length > 0) {
+      const nameExists = rows.some(
+        (r) => r.department_name.toLowerCase() === department_name.toLowerCase()
+      );
+      const codeExists = rows.some(
+        (r) => r.department_code.toLowerCase() === department_code.toLowerCase()
+      );
+
+      let message = "";
+      if (nameExists && codeExists) {
+        message = "Department name and code already exist.";
+      } else if (nameExists) {
+        message = "Department name already exists.";
+      } else if (codeExists) {
+        message = "Department code already exists.";
+      }
+
+      return res.status(400).json({ success: false, message });
     }
 
-    res.json({ success: true, message: "Department updated successfully" });
+    const updateSql = `
+      UPDATE Departments
+      SET department_image = ?, department_name = ?, department_code = ?
+      WHERE department_id = ?
+    `;
+    db.run(
+      updateSql,
+      [department_image, department_name, department_code, id],
+      function (err) {
+        if (err) {
+          console.error("Error updating department:", err.message);
+          return res
+            .status(500)
+            .json({ success: false, message: "Database error" });
+        }
+
+        if (this.changes === 0) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Department not found" });
+        }
+
+        res.json({ success: true, message: "Department updated successfully" });
+      }
+    );
   });
 });
 
@@ -1040,23 +1119,60 @@ app.post("/add-course", (req, res) => {
   const { course_image, course_name, course_code } = req.body;
 
   if (!course_name || !course_code) {
-    return res.status(400).json({ success: false, message: "Missing required fields" });
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing required fields" });
   }
 
-  const sql = `
-    INSERT INTO Courses (course_image, course_name, course_code)
-    VALUES (?, ?, ?)
+  const checkSql = `
+    SELECT course_name, course_code FROM Courses
+    WHERE LOWER(course_name) = LOWER(?)
+       OR LOWER(course_code) = LOWER(?)
   `;
 
-  db.run(sql, [course_image, course_name, course_code], function (err) {
+  db.all(checkSql, [course_name, course_code], (err, rows) => {
     if (err) {
-      console.error("Error inserting course:", err.message);
-      return res.status(500).json({ success: false, message: "Database error", error: err.message });
+      console.error("Error checking duplicates:", err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
     }
-    res.json({ 
-      success: true, 
-      message: "Course added successfully", 
-      department_id: this.lastID 
+
+    if (rows.length > 0) {
+      const nameExists = rows.some(
+        (r) => r.course_name.toLowerCase() === course_name.toLowerCase()
+      );
+      const codeExists = rows.some(
+        (r) => r.course_code.toLowerCase() === course_code.toLowerCase()
+      );
+
+      let message = "";
+      if (nameExists && codeExists) {
+        message = "Course name and code already exist.";
+      } else if (nameExists) {
+        message = "Course name already exists.";
+      } else if (codeExists) {
+        message = "Course code already exists.";
+      }
+
+      return res.status(400).json({ success: false, message });
+    }
+
+    const insertSql = `
+      INSERT INTO Courses (course_image, course_name, course_code)
+      VALUES (?, ?, ?)
+    `;
+    db.run(insertSql, [course_image, course_name, course_code], function (err) {
+      if (err) {
+        console.error("Error inserting course:", err.message);
+        return res
+          .status(500)
+          .json({ success: false, message: "Database error" });
+      }
+
+      res.json({
+        success: true,
+        message: "Course added successfully",
+        course_id: this.lastID,
+      });
     });
   });
 });
@@ -1088,33 +1204,77 @@ app.get("/courses", (req, res) => {
   });
 });
 
-
 // UPDATE Course
 app.put("/update-course/:id", (req, res) => {
   const { id } = req.params;
-  const { department_id, course_name, course_code } = req.body;
+  const { course_image, course_name, course_code } = req.body;
 
   if (!course_name || !course_code) {
-    return res.status(400).json({ success: false, message: "Missing required fields" });
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing required fields" });
   }
 
-  const sql = `
-    UPDATE Courses
-    SET course_image = ?, course_name = ?, course_code = ?
-    WHERE course_id = ?
+  const checkSql = `
+    SELECT course_name, course_code FROM Courses
+    WHERE (LOWER(course_name) = LOWER(?)
+       OR LOWER(course_code) = LOWER(?))
+       AND course_id != ?
   `;
 
-  db.run(sql, [course_image, course_name, course_code, id], function (err) {
+  db.all(checkSql, [course_name, course_code, id], (err, rows) => {
     if (err) {
-      console.error("Error updating course:", err.message);
-      return res.status(500).json({ success: false, message: "Database error", error: err.message });
+      console.error("Error checking duplicates:", err.message);
+      return res
+        .status(500)
+        .json({ success: false, message: "Database error" });
     }
 
-    if (this.changes === 0) {
-      return res.status(404).json({ success: false, message: "Course not found" });
+    if (rows.length > 0) {
+      const nameExists = rows.some(
+        (r) => r.course_name.toLowerCase() === course_name.toLowerCase()
+      );
+      const codeExists = rows.some(
+        (r) => r.course_code.toLowerCase() === course_code.toLowerCase()
+      );
+
+      let message = "";
+      if (nameExists && codeExists) {
+        message = "Course name and code already exist.";
+      } else if (nameExists) {
+        message = "Course name already exists.";
+      } else if (codeExists) {
+        message = "Course code already exists.";
+      }
+
+      return res.status(400).json({ success: false, message });
     }
 
-    res.json({ success: true, message: "Course updated successfully" });
+    const updateSql = `
+      UPDATE Courses
+      SET course_image = ?, course_name = ?, course_code = ?
+      WHERE course_id = ?
+    `;
+    db.run(
+      updateSql,
+      [course_image, course_name, course_code, id],
+      function (err) {
+        if (err) {
+          console.error("Error updating course:", err.message);
+          return res
+            .status(500)
+            .json({ success: false, message: "Database error" });
+        }
+
+        if (this.changes === 0) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Course not found" });
+        }
+
+        res.json({ success: true, message: "Course updated successfully" });
+      }
+    );
   });
 });
 
@@ -1253,25 +1413,72 @@ app.delete("/remove-course-subject", (req, res) => {
 /*////////////////////////////////////////////////////////////////////////
 /////////////////////////  SUBJECTS  //////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////*/ 
-// Insert Subject
+// CREATE Subject
 app.post("/add-subject", (req, res) => {
   const { subject_name, subject_code, units, lecture, laboratory } = req.body;
 
   if (!subject_name || !subject_code || !units || !lecture || !laboratory) {
-    return res.status(400).json({ success: false, message: "Missing required fields" });
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing required fields" });
   }
 
-  const sql = `
-    INSERT INTO Subjects (subject_name, subject_code, units, lecture, laboratory)
-    VALUES (?, ?, ?, ?, ?)
+  const checkSql = `
+    SELECT subject_name, subject_code FROM Subjects
+    WHERE LOWER(subject_name) = LOWER(?)
+       OR LOWER(subject_code) = LOWER(?)
   `;
 
-  db.run(sql, [subject_name, subject_code, units, lecture, laboratory], function (err) {
+  db.all(checkSql, [subject_name, subject_code], (err, rows) => {
     if (err) {
-      console.error("Error inserting subject:", err.message);
-      return res.status(500).json({ success: false, message: "Database error" });
+      console.error("Error checking duplicates:", err.message);
+      return res
+        .status(500)
+        .json({ success: false, message: "Database error" });
     }
-    res.json({ success: true, message: "Subject added successfully", subject_id: this.lastID });
+
+    if (rows.length > 0) {
+      const nameExists = rows.some(
+        (r) => r.subject_name.toLowerCase() === subject_name.toLowerCase()
+      );
+      const codeExists = rows.some(
+        (r) => r.subject_code.toLowerCase() === subject_code.toLowerCase()
+      );
+
+      let message = "";
+      if (nameExists && codeExists) {
+        message = "Subject name and code already exist.";
+      } else if (nameExists) {
+        message = "Subject name already exists.";
+      } else if (codeExists) {
+        message = "Subject code already exists.";
+      }
+
+      return res.status(400).json({ success: false, message });
+    }
+
+    const insertSql = `
+      INSERT INTO Subjects (subject_name, subject_code, units, lecture, laboratory)
+      VALUES (?, ?, ?, ?, ?)
+    `;
+    db.run(
+      insertSql,
+      [subject_name, subject_code, units, lecture, laboratory],
+      function (err) {
+        if (err) {
+          console.error("Error inserting subject:", err.message);
+          return res
+            .status(500)
+            .json({ success: false, message: "Database error" });
+        }
+
+        res.json({
+          success: true,
+          message: "Subject added successfully",
+          subject_id: this.lastID,
+        });
+      }
+    );
   });
 });
 
@@ -1285,22 +1492,76 @@ app.get("/subjects", (req, res) => {
   })
 })
 
-// UPDATE subject
+// UPDATE Subject
 app.put("/update-subject/:id", (req, res) => {
   const { id } = req.params;
   const { subject_name, subject_code, units, lecture, laboratory } = req.body;
 
-  const sql = `
-    UPDATE Subjects
-    SET subject_name = ?, subject_code = ?, units = ?, lecture = ?, laboratory = ?
-    WHERE subject_id = ?
+  if (!subject_name || !subject_code || !units || !lecture || !laboratory) {
+    return res
+      .status(400)
+      .json({ success: false, message: "Missing required fields" });
+  }
+
+  const checkSql = `
+    SELECT subject_name, subject_code FROM Subjects
+    WHERE (LOWER(subject_name) = LOWER(?) OR LOWER(subject_code) = LOWER(?))
+      AND subject_id != ?
   `;
 
-  db.run(sql, [subject_name, subject_code, units, lecture, laboratory, id], function (err) {
+  db.all(checkSql, [subject_name, subject_code, id], (err, rows) => {
     if (err) {
-      return res.status(500).json({ error: err.message });
+      console.error("Error checking duplicates:", err.message);
+      return res
+        .status(500)
+        .json({ success: false, message: "Database error" });
     }
-    res.json({ updated: this.changes });
+
+    if (rows.length > 0) {
+      const nameExists = rows.some(
+        (r) => r.subject_name.toLowerCase() === subject_name.toLowerCase()
+      );
+      const codeExists = rows.some(
+        (r) => r.subject_code.toLowerCase() === subject_code.toLowerCase()
+      );
+
+      let message = "";
+      if (nameExists && codeExists) {
+        message = "Subject name and code already exist.";
+      } else if (nameExists) {
+        message = "Subject name already exists.";
+      } else if (codeExists) {
+        message = "Subject code already exists.";
+      }
+
+      return res.status(400).json({ success: false, message });
+    }
+
+    const updateSql = `
+      UPDATE Subjects
+      SET subject_name = ?, subject_code = ?, units = ?, lecture = ?, laboratory = ?
+      WHERE subject_id = ?
+    `;
+    db.run(
+      updateSql,
+      [subject_name, subject_code, units, lecture, laboratory, id],
+      function (err) {
+        if (err) {
+          console.error("Error updating subject:", err.message);
+          return res
+            .status(500)
+            .json({ success: false, message: "Database error" });
+        }
+
+        if (this.changes === 0) {
+          return res
+            .status(404)
+            .json({ success: false, message: "Subject not found" });
+        }
+
+        res.json({ success: true, message: "Subject updated successfully" });
+      }
+    );
   });
 });
 
@@ -1319,22 +1580,51 @@ app.delete("/subjects/:id", (req, res) => {
 /////////////////////////  ROOMS  //////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////*/ 
 // Insert Room
-app.post("/add-room", (req, res) => {
+app.post("/add-room", async (req, res) => {
   const { rooms } = req.body;
 
   if (!rooms || !Array.isArray(rooms) || rooms.length === 0) {
     return res.status(400).json({ success: false, message: "No rooms provided" });
   }
 
-  const sql = `INSERT INTO Rooms (room_code, room_type) VALUES (?, ?)`;
-  const stmt = db.prepare(sql);
+  const checkSql = `SELECT COUNT(*) AS count FROM Rooms WHERE LOWER(room_code) = LOWER(?)`;
+  const insertSql = `INSERT INTO Rooms (room_code, room_type) VALUES (?, ?)`;
 
   try {
+    const duplicateCodes = [];
+
     for (const room of rooms) {
       if (!room.room_code || !room.room_type) continue;
-      stmt.run([room.room_code, room.room_type]);
+
+      const existing = await new Promise((resolve, reject) => {
+        db.get(checkSql, [room.room_code], (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        });
+      });
+
+      if (existing.count > 0) {
+        duplicateCodes.push(room.room_code);
+      }
     }
-    stmt.finalize();
+
+    if (duplicateCodes.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Duplicate rooms found: ${duplicateCodes.join(", ")}.`,
+        duplicates: duplicateCodes, // ✅ Added for easy parsing
+      });
+    }
+
+    for (const room of rooms) {
+      if (!room.room_code || !room.room_type) continue;
+      await new Promise((resolve, reject) => {
+        db.run(insertSql, [room.room_code, room.room_type], err => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+    }
 
     res.json({ success: true, message: "Rooms added successfully" });
   } catch (err) {
@@ -1342,6 +1632,7 @@ app.post("/add-room", (req, res) => {
     res.status(500).json({ success: false, message: "Database error" });
   }
 });
+
 
 // READ all rooms
 app.get("/rooms", (req, res) => {
@@ -1358,19 +1649,41 @@ app.put("/update-room/:id", (req, res) => {
   const { id } = req.params;
   const { room_code, room_type } = req.body;
 
-  const sql = `
-    UPDATE Rooms
-    SET room_code = ?, room_type = ?
-    WHERE room_id = ?
+  // Check if new room_code already exists (case-insensitive)
+  const checkSql = `
+    SELECT room_id FROM Rooms 
+    WHERE LOWER(room_code) = LOWER(?) AND room_id != ?
   `;
 
-  db.run(sql, [room_code, room_type, id], function (err) {
+  db.get(checkSql, [room_code, id], (err, row) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
-    res.json({ updated: this.changes });
+
+    if (row) {
+      // 🟥 Duplicate found
+      return res.status(400).json({
+        message: `Room with code "${room_code}" already exists.`,
+        duplicates: [room_code]
+      });
+    }
+
+    // Proceed with update
+    const sql = `
+      UPDATE Rooms
+      SET room_code = ?, room_type = ?
+      WHERE room_id = ?
+    `;
+
+    db.run(sql, [room_code, room_type, id], function (err) {
+      if (err) {
+        return res.status(500).json({ error: err.message });
+      }
+      res.json({ updated: this.changes });
+    });
   });
 });
+
 
 // DELETE room
 app.delete("/rooms/:id", (req, res) => {

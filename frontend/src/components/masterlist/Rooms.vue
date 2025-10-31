@@ -1,5 +1,5 @@
 <script setup>
-    import { ref, onMounted, computed } from "vue"
+    import { ref, onMounted, computed, nextTick, watch } from "vue"
     import { useRouter } from 'vue-router'
     import axios from "axios";
 
@@ -10,6 +10,12 @@
 
     const isVisibleRoomModal = ref(false)
     const isVisibleNewSectionBtn = ref(true)
+
+    const showErrorInput = ref(false)
+    const duplicateCodes = ref([]);
+    const duplicateCode = ref("");
+
+    const errorMessage = ref('');
 
     const searchQuery = ref("")
 
@@ -67,8 +73,8 @@
         }
 
         else if(which === 'cancel'){
-            setTimeout(() => resetInputs(), 100);
-
+            setTimeout(() => resetInputs(), 200);
+            showErrorInput.value = false
             isVisibleRoomModal.value = !isVisibleRoomModal.value
         }
     }
@@ -78,8 +84,16 @@
         roomButton.value = ''
         roomHandler.value = ''
         roomForms.value = [{ room_code: "", room_type: "", capacity: "" }]
+        duplicateCode.value = ""
+        showErrorInput.value = false
 
-        setTimeout(() => isVisibleNewSectionBtn.value = true, 100);
+        nextTick(() => {
+            document
+            .querySelectorAll(".error-input-border")
+            .forEach((el) => el.classList.remove("error-input-border"))
+        });
+
+        setTimeout(() => isVisibleNewSectionBtn.value = true, 100)
     }
 
     /////////////////////////////// FETCH ROOMS ////////////////////////////
@@ -107,20 +121,181 @@
     }
 
     const roomConfirm = async () => {
-        if (roomHandler.value === "add") {
-            await axios.post("http://localhost:3000/add-room", {
-            rooms: roomForms.value
-            })
-        } else if (roomHandler.value === "update") {
-            await axios.put(`http://localhost:3000/update-room/${selectedRoom.value.room_id}`, {
-            room_code: roomForms.value[0].room_code,
-            room_type: roomForms.value[0].room_type
-            })
+        const modal = document.querySelector(".modal-content");
+        const inputs = modal ? modal.querySelectorAll("input") : [];
+        const selects = modal ? modal.querySelectorAll("select") : [];
+
+        // 🧹 Always set up real-time red border removal
+        inputs.forEach(input => {
+            input.addEventListener("input", () => {
+                input.classList.remove("error-input-border");
+            });
+        });
+
+        // 🟥 NEW: Real-time red border removal for selects
+        selects.forEach(select => {
+            select.addEventListener("change", () => {
+                select.classList.remove("error-input-border");
+            });
+        });
+
+        // Shared blank checker
+        const blankInputs = roomForms.value.filter(
+            form => !form.room_code.trim() || !form.room_type.trim()
+        );
+
+        if (blankInputs.length > 0) {
+            showErrorInput.value = true;
+            await nextTick();
+
+            // Remove all previous borders
+            inputs.forEach(input => input.classList.remove("error-input-border"));
+            selects.forEach(select => select.classList.remove("error-input-border"));
+
+            // Add red border only to blanks
+            inputs.forEach(input => {
+                if (!input.value.trim()) {
+                    input.classList.add("error-input-border");
+                }
+            });
+
+            // 🟥 NEW: Add red border to empty selects
+            selects.forEach(select => {
+                if (!select.value.trim()) {
+                    select.classList.add("error-input-border");
+                }
+            });
+
+            errorMessage.value = "Please fill in all room fields.";
+            return;
         }
 
-        fetchRooms()
-        toggleRoomModal("cancel")
-    }
+        if (roomHandler.value === "add") {
+            // ADD MODE
+            try {
+                await axios.post("http://localhost:3000/add-room", {
+                    rooms: roomForms.value
+                });
+            } catch (err) {
+                const message = err.response?.data?.message || "";
+                const duplicates = err.response?.data?.duplicates || [];
+
+                duplicateCodes.value = duplicates.length
+                    ? duplicates
+                    : [...message.matchAll(/"([^"]+)"/gi)].map(m => m[1]);
+
+                if (duplicateCodes.value.length > 0) {
+                    showErrorInput.value = true;
+                    await nextTick();
+
+                    // Clear all previous red borders
+                    inputs.forEach(input => input.classList.remove("error-input-border"));
+                    selects.forEach(select => select.classList.remove("error-input-border"));
+
+                    // Add red border for duplicates
+                    duplicateCodes.value.forEach(code => {
+                        const lowerCode = code.toLowerCase();
+                        inputs.forEach(input => {
+                            if (input.value.toLowerCase() === lowerCode) {
+                                input.classList.add("error-input-border");
+                            }
+                        });
+                    });
+
+                    errorMessage.value = "Existing room code found.";
+                }
+                return;
+            }
+        } 
+        else if (roomHandler.value === "update") {
+            // UPDATE MODE
+            try {
+                await axios.put(`http://localhost:3000/update-room/${selectedRoom.value.room_id}`, {
+                    room_code: roomForms.value[0].room_code,
+                    room_type: roomForms.value[0].room_type
+                });
+            } catch (err) {
+                const message = err.response?.data?.message || "";
+                const duplicates = err.response?.data?.duplicates || [];
+
+                duplicateCodes.value = duplicates.length
+                    ? duplicates
+                    : [...message.matchAll(/"([^"]+)"/gi)].map(m => m[1]);
+
+                if (duplicateCodes.value.length > 0) {
+                    showErrorInput.value = true;
+                    await nextTick();
+
+                    // Clear previous red borders
+                    inputs.forEach(input => input.classList.remove("error-input-border"));
+                    selects.forEach(select => select.classList.remove("error-input-border"));
+
+                    // Highlight duplicates
+                    duplicateCodes.value.forEach(code => {
+                        const lowerCode = code.toLowerCase();
+                        inputs.forEach(input => {
+                            if (input.value.toLowerCase() === lowerCode) {
+                                input.classList.add("error-input-border");
+                            }
+                        });
+                    });
+                    errorMessage.value = "Existing room code found.";
+                    
+                }
+                return;
+            }
+        }
+
+        // ✅ If no errors, refresh & close
+        await fetchRooms();
+        toggleRoomModal("cancel");
+    };
+
+    // 🔥 Watch for user typing to remove error borders dynamically
+    watch(
+        roomForms,
+        async (newVal) => {
+            if (!showErrorInput.value || duplicateCodes.value.length === 0) return;
+
+            // 🧩 Scope inputs to modal just like in roomConfirm
+            const modal = document.querySelector(".modal-content");
+            const inputs = modal ? modal.querySelectorAll("input") : [];
+
+            // Get all current input values in lowercase
+            const currentCodes = newVal.map(f => f.room_code?.toLowerCase?.() || "");
+
+            // Find duplicates that still exist
+            const remainingDuplicates = duplicateCodes.value.filter(code =>
+                currentCodes.includes(code.toLowerCase())
+            );
+
+            // ✅ If all duplicates are fixed
+            if (remainingDuplicates.length === 0) {
+                showErrorInput.value = false;
+                duplicateCodes.value = [];
+
+                await nextTick();
+                inputs.forEach(el => el.classList.remove("error-input-border"));
+                return;
+            }
+
+            // ✅ Keep only unresolved duplicates
+            duplicateCodes.value = remainingDuplicates;
+
+            // ✅ Re-apply error borders after DOM update (scoped to modal)
+            await nextTick();
+
+            inputs.forEach(input => {
+                const value = input.value.toLowerCase();
+                if (remainingDuplicates.some(code => code.toLowerCase() === value)) {
+                    input.classList.add("error-input-border");
+                } else {
+                    input.classList.remove("error-input-border");
+                }
+            });
+        },
+        { deep: true }
+    );
 
     function addRoomSection() {
         roomForms.value.push({
@@ -135,7 +310,6 @@
             roomForms.value.pop()
         }
     }
-
 
     //////////////////////// Delete Room /////////////////////////
     const isVisibleDeleteModal = ref(false)
@@ -282,11 +456,11 @@
                <div class="modal-content">
                     <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">{{ roomTitle }}</h2>
                         
-                    <div>
-                        <div v-for="(form, index) in roomForms" :key="index" style="display: flex; gap: 14px; width: 100%; margin-bottom: 12px;">
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div v-for="(form, index) in roomForms" :key="index" style="display: flex; gap: 14px; width: 100%;">
                             <div style="flex: 1;">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Room Code</p>
-                                <input v-model="form.room_code" />
+                                <input v-model="form.room_code"/>
                             </div>
 
                             <div style="flex: 1;">
@@ -298,6 +472,8 @@
                                 </select>
                             </div>
                         </div>
+
+                        <label v-show="showErrorInput" style="color: red; font-size: 0.95rem;">{{ errorMessage }}</label>
 
                         <div v-show="isVisibleNewSectionBtn" style="display: flex; flex-direction: row; gap: 6px; width: fit-content;">
                             <svg @click="addRoomSection" style="margin-left: auto;" width="32" height="32" viewBox="0 0 33 32" fill="none" xmlns="http://www.w3.org/2000/svg">

@@ -6,11 +6,11 @@
     const router = useRouter()
 
     // DATA
-    const subjectName = ref()
-    const subjectCode = ref()
-    const selectedUnits = ref()
-    const selectedLectureTime = ref()
-    const selectedLaboratoryTime = ref()
+    const subjectName = ref('')
+    const subjectCode = ref('')
+    const selectedUnits = ref('')
+    const selectedLectureTime = ref('')
+    const selectedLaboratoryTime = ref('')
 
     const isVisibleSubjectModal = ref(false)
 
@@ -76,32 +76,36 @@
             subjectHandler.value = 'update'
             subjectName.value = selectedSubject.value.subject_name
             subjectCode.value = selectedSubject.value.subject_code
-            selectedUnits.value = selectedSubject.value.units
-            selectedLectureTime.value = selectedSubject.value.lecture
-            selectedLaboratoryTime.value = selectedSubject.value.laboratory
+            selectedUnits.value = String(selectedSubject.value.units)
+            selectedLectureTime.value = String(selectedSubject.value.lecture)
+            selectedLaboratoryTime.value = String(selectedSubject.value.laboratory)
             isVisibleSubjectModal.value = !isVisibleSubjectModal.value
-
-            console.log(selectedSubject.value)
         }
 
         else if(which === 'cancel'){
-            setTimeout(() => {
-                resetInputs()
-            }, 100);
-
+            resetInputs()
             isVisibleSubjectModal.value = !isVisibleSubjectModal.value
         }
     }
 
     function resetInputs(){
-        subjectTitle.value = ''
-        subjectButton.value = ''
-        subjectHandler.value = ''
-        subjectName.value = ''
-        subjectCode.value = ''
-        selectedUnits.value = ''
-        selectedLectureTime.value = ''
-        selectedLaboratoryTime.value = ''
+        setTimeout(() => {
+            subjectTitle.value = ''
+            subjectButton.value = ''
+            subjectHandler.value = ''
+            subjectName.value = ''
+            subjectCode.value = ''
+            selectedUnits.value = ''
+            selectedLectureTime.value = ''
+            selectedLaboratoryTime.value = ''
+            showErrorInput.value = false
+            errorMessage.value = ''
+            isSubjectNameOk.value = false
+            isSubjectCodeOk.value = false
+            isUnitsOk.value = false
+            isLectureOk.value = false
+            isLaboratoryOk.value = false
+        }, 200);
     }
 
     /////////////////////////////// FETCH SUBJECTS ////////////////////////////
@@ -151,58 +155,153 @@
     const subjectHandler = ref('')
     const selectedSubject = ref(null)
 
+    const showErrorInput = ref(false)
+    const errorMessage = ref('')
+    const isSubjectNameOk = ref(false)
+    const isSubjectCodeOk = ref(false)
+    const isUnitsOk = ref(false)
+    const isLectureOk = ref(false)
+    const isLaboratoryOk = ref(false)
+
     const setSelectedSubject = (subject) => {
         selectedSubject.value = { ...subject }
     }
 
     const subjectConfirm = async () => {
+        // 🔹 Blank Input Validation
+        if (
+            !subjectName.value.trim() ||
+            !subjectCode.value.trim() ||
+            !selectedUnits.value ||
+            !selectedLectureTime.value ||
+            !selectedLaboratoryTime.value
+        ) {
+            showErrorInput.value = false;
+            setTimeout(() => (showErrorInput.value = true), 0);
 
-        if(subjectHandler.value === 'add'){
-            try {
+            isSubjectNameOk.value = !!subjectName.value.trim();
+            isSubjectCodeOk.value = !!subjectCode.value.trim();
+            isUnitsOk.value = !!selectedUnits.value;
+            isLectureOk.value = !!selectedLectureTime.value;
+            isLaboratoryOk.value = !!selectedLaboratoryTime.value;
+
+            errorMessage.value = "Please fill in all required fields.";
+            return;
+        }
+
+        // 🚫 Lecture and Laboratory cannot both be 0
+        if (selectedLectureTime.value === "0" && selectedLaboratoryTime.value === "0") {
+            showErrorInput.value = false;
+            setTimeout(() => (showErrorInput.value = true), 0);
+
+            isLectureOk.value = false;
+            isLaboratoryOk.value = false;
+            errorMessage.value = "Lecture and Laboratory cannot be both none.";
+            return;
+        }
+
+        try {
+            if (subjectHandler.value === "add") {
                 const res = await axios.post("http://localhost:3000/add-subject", {
-                    subject_name: subjectName.value,
-                    subject_code: subjectCode.value.toUpperCase(),
+                    subject_name: subjectName.value.trim(),
+                    subject_code: subjectCode.value.trim().toUpperCase(),
                     units: selectedUnits.value,
                     lecture: selectedLectureTime.value,
-                    laboratory: selectedLaboratoryTime.value
+                    laboratory: selectedLaboratoryTime.value,
                 });
-                console.log(res.data.message);
-            } catch (error) {
-                console.error("Error:", error);
-                console.log("Failed to add subject.");
+            } 
+            else if (subjectHandler.value === "update") {
+                const res = await axios.put(
+                    `http://localhost:3000/update-subject/${selectedSubject.value.subject_id}`,
+                    {
+                        subject_name: subjectName.value.trim(),
+                        subject_code: subjectCode.value.trim().toUpperCase(),
+                        units: selectedUnits.value,
+                        lecture: selectedLectureTime.value,
+                        laboratory: selectedLaboratoryTime.value,
+                    }
+                );
             }
 
-            fetchSubjects()
-            setTimeout(() => {
-                    resetInputs()
-                }, 100);
-            isVisibleSubjectModal.value = !isVisibleSubjectModal.value
-        }
-
-        else if(subjectHandler.value === 'update'){
-            try {
-                const res = await axios.put(`http://localhost:3000/update-subject/${selectedSubject.value.subject_id}`, {
-                    subject_name: subjectName.value,
-                    subject_code: subjectCode.value,
-                    units: selectedUnits.value,
-                    lecture: selectedLectureTime.value,
-                    laboratory: selectedLaboratoryTime.value
-                });
-
-            console.log(res.data.message);
-            
+            // 🔹 Refresh and reset
             fetchSubjects();
-            selectedSubject.value = null;
-            toggleSubjectModal('cancel');
+            toggleSubjectModal("cancel");
+            resetInputs();
+        } 
+        catch (error) {
+            // 🔹 Duplicate check (based on backend response)
+            const message = error.response?.data?.message;
 
-            // Reset Inputs
-            resetInputs()
-            } catch (error) {
-                console.error("Error:", error);
-                alert("Failed to update subject.");
+            // Reset all OK flags first
+            isSubjectNameOk.value = true;
+            isSubjectCodeOk.value = true;
+            isUnitsOk.value = true;
+            isLectureOk.value = true;
+            isLaboratoryOk.value = true;
+
+            let duplicateFound = false;
+
+            if (message?.includes("Subject name and code already exist.")) {
+                isSubjectNameOk.value = false;
+                isSubjectCodeOk.value = false;
+                duplicateFound = true;
+            } 
+            else if (message?.includes("Subject name already exists")) {
+                isSubjectNameOk.value = false;
+                duplicateFound = true;
+            } 
+            else if (message?.includes("Subject code already exists")) {
+                isSubjectCodeOk.value = false;
+                duplicateFound = true;
             }
+
+            if (duplicateFound) {
+                showErrorInput.value = false;
+                setTimeout(() => (showErrorInput.value = true), 0);
+            }
+
+            errorMessage.value = message || "Failed to save subject.";
         }
-    }
+    };
+
+    // 🧠 Helper function to check if all required inputs are OK
+    const checkAllOk = () => {
+        if (
+            isSubjectNameOk.value &&
+            isSubjectCodeOk.value &&
+            isUnitsOk.value &&
+            isLectureOk.value &&
+            isLaboratoryOk.value
+        ) {
+            showErrorInput.value = false;
+        }
+    };
+
+    // 🕵️ Watchers to auto-clear red border and error when typing
+    const watchers = [
+    { ref: subjectName, flag: isSubjectNameOk },
+    { ref: subjectCode, flag: isSubjectCodeOk },
+    { ref: selectedUnits, flag: isUnitsOk },
+    { ref: selectedLectureTime, flag: isLectureOk },
+    { ref: selectedLaboratoryTime, flag: isLaboratoryOk },
+    ];
+
+    watchers.forEach(({ ref, flag }) => {
+    watch(ref, (newVal) => {
+        // ✅ Handle different data types safely
+        const value =
+        typeof newVal === "string"
+            ? newVal.trim()
+            : newVal !== null && newVal !== undefined
+            ? String(newVal).trim()
+            : "";
+
+        if (value !== "") {
+        flag.value = true;
+        checkAllOk();
+        }
+    });
+    });
 
     //////////////////////// Delete Subject Modal /////////////////////////
     const isVisibleDeleteModal = ref(false)
@@ -356,18 +455,21 @@
                     <div style="display: flex; flex-direction: column; gap: 14px; width: 100%;">
                         <div>
                             <p class="paragraph--black-bold" style="line-height: 1.8;">Subject Name</p>
-                            <input v-model="subjectName"></input>
+                            <input v-model="subjectName"
+                            :class="{ 'error-input-border': showErrorInput && !isSubjectNameOk }"></input>
                         </div>
 
                         <div style="display: flex; flex-direction: row; gap: 14px;">
                             <div style="flex: 1;">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Subject Code</p>
-                                <input v-model="subjectCode"></input>
+                                <input v-model="subjectCode"
+                                :class="{ 'error-input-border': showErrorInput && !isSubjectCodeOk }"></input>
                             </div>
 
                             <div style="flex: 1;">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Units</p>
-                                <select v-model="selectedUnits" style="width: 100%;">
+                                <select v-model="selectedUnits" style="width: 100%;"
+                                :class="{ 'error-input-border': showErrorInput && !isUnitsOk }">
                                     <option value="1">1 Units</option>
                                     <option value="2">2 Units</option>
                                     <option value="3">3 Units</option>
@@ -378,7 +480,8 @@
                         <div style="display: flex; flex-direction: row; gap: 14px;">
                             <div style="flex: 1;">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Lecture</p>
-                                <select v-model="selectedLectureTime" style="width: 100%;">
+                                <select v-model="selectedLectureTime" style="width: 100%;"
+                                :class="{ 'error-input-border': showErrorInput && !isLectureOk }">
                                     <option value="0">None</option>
                                     <option value="1">1 hr</option>
                                     <option value="2">2 hrs</option>
@@ -388,7 +491,8 @@
 
                             <div style="flex: 1;">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Laboratory</p>
-                                <select v-model="selectedLaboratoryTime" style="width: 100%;">
+                                <select v-model="selectedLaboratoryTime" style="width: 100%;"
+                                :class="{ 'error-input-border': showErrorInput && !isLaboratoryOk }">
                                     <option value="0">None</option>
                                     <option value="1">1 hr</option>
                                     <option value="2">2 hrs</option>
@@ -396,6 +500,7 @@
                                 </select>
                             </div>
                         </div>
+                        <label v-show="showErrorInput" style="color: red; font-size: 0.95rem; margin-right: auto;">{{ errorMessage }}</label>
                     </div>
 
                     <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">

@@ -1045,7 +1045,9 @@ const saveScheduleToDB = async () => {
     try {
       const res = await axios.post(url, payload)
       if (res.data.success) {
-        // alert(res.data.message)
+        // ✅ Sync to prevent unsaved changes prompt
+        originalSchedule.value = JSON.parse(JSON.stringify(schedule.value))
+        originalTimes.value = JSON.parse(JSON.stringify(times.value))
       } else {
         alert('Failed to save')
         return

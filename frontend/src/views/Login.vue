@@ -86,7 +86,7 @@ const signinBtn = async () => {
   <div id="container">
 
     <div id="signin-card">
-      <img src="../assets/login/lccn_logo.png" id="LCCN-logo" style="width: 60px; height: auto;"/>
+      <img src="../assets/login/lccn_logo.webp" id="LCCN-logo" style="width: 60px; height: auto;"/>
       <label style="font-family: 'Satisfy', cursive; font-size: 1.8rem; margin-top: 4px; margin-bottom: 18px;">La Consolacion College</label>
 
       <div id="username">
