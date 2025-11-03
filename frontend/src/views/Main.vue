@@ -427,7 +427,7 @@ watch(confirmNewPassword, (newVal) => {
 /* Navbar */
 .navbar {
   display: flex;
-  height: 52px;
+  height: 45px;
   justify-content: space-between;
   align-items: center;
   padding: 10px 30px;
@@ -503,7 +503,9 @@ watch(confirmNewPassword, (newVal) => {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  border-right: 1px solid var(--color-border);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+  border-right: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 18px;
   user-select: none;
 }
 

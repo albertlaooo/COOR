@@ -684,8 +684,6 @@
                         <button @click="toggleDepartmentModal('cancel')" class="cancelBtn">Cancel</button>
                         <button @click="departmentConfirm()">{{ departmentButton }}</button>
                     </div>
-
-                    
                </div>
             </div>
         </transition>

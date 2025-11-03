@@ -1,4 +1,5 @@
 <script setup>
+    import { ref, onMounted } from 'vue'
     import { useRouter } from 'vue-router'
 
     const router = useRouter()
@@ -30,6 +31,20 @@
     function goToPage(page) {
         router.push(`/main/masterlist/${page}`)
     }
+
+    //#region fade-up animation delay
+    const visible = ref([false, false, false, false, false]) // one flag per transition
+
+    onMounted(() => {
+        let delay = 0
+        visible.value.forEach((_, i) => {
+            setTimeout(() => {
+            visible.value[i] = true
+            }, delay)
+            delay += 100 // adjust delay between transitions (ms)
+        })
+    })
+    //#endregion
 </script>
 
 <template>
@@ -70,17 +85,22 @@
                 <p style="font-weight: bold; margin-bottom: 20px;">Academic Setup</p>
                 <div class="card-container">
 
+                    
                     <!-- Teacher -->
-                    <div @click="goToPage('teachers')" class="card">
-                        <img :src="teachersLogo"></img>
-                        <p class="paragraph--black-bold">Teachers</p>
-                    </div>
+                    <transition name="fade-up" appear>
+                        <div v-show="visible[0]" @click="goToPage('teachers')" class="card">
+                            <img :src="teachersLogo"></img>
+                            <p class="paragraph--black-bold">Teachers</p>
+                        </div>
+                    </transition>
 
                     <!-- Sections -->
-                    <div @click="goToPage('sections')" class="card">
-                        <img :src="sectionsLogo"></img>
-                        <p class="paragraph--black-bold">Sections</p>
-                    </div>
+                    <transition name="fade-up" appear>
+                        <div v-show="visible[1]" @click="goToPage('sections')" class="card">
+                            <img :src="sectionsLogo"></img>
+                            <p class="paragraph--black-bold">Sections</p>
+                        </div>
+                    </transition>
                 </div>
             </div>
 
@@ -89,29 +109,36 @@
                 <p style="font-weight: bold; margin-bottom: 20px;">Master Data</p>
                 <div class="card-container">
                     <!-- Departments -->
-                    <div @click="goToPage('departments')" class="card">
-                        <img :src="departmentsLogo"></img>
-                        <p class="paragraph--black-bold">Departments</p>
-                    </div>
+                    <transition name="fade-up" appear>
+                        <div v-show="visible[1]" @click="goToPage('departments')" class="card">
+                            <img :src="departmentsLogo"></img>
+                            <p class="paragraph--black-bold">Departments</p>
+                        </div>
+                    </transition>
 
                     <!-- Courses -->
-                    <div @click="goToPage('courses')" class="card">
-                        <img :src="coursesLogo"></img>
-                        <p class="paragraph--black-bold">Courses</p>
-                    </div>
+                    <transition name="fade-up" appear>
+                        <div v-show="visible[2]" @click="goToPage('courses')" class="card">
+                            <img :src="coursesLogo"></img>
+                            <p class="paragraph--black-bold">Courses</p>
+                        </div>
+                    </transition>
 
                     <!-- Subjects -->
-                    <div @click="goToPage('subjects')" class="card">
-                        <img :src="subjectsLogo"></img>
-                        <p class="paragraph--black-bold">Subjects</p>
-                    </div>
+                    <transition name="fade-up" appear>
+                        <div v-show="visible[3]" @click="goToPage('subjects')" class="card">
+                            <img :src="subjectsLogo"></img>
+                            <p class="paragraph--black-bold">Subjects</p>
+                        </div>
+                    </transition>
 
                     <!-- Rooms -->
-                    <div @click="goToPage('rooms')" class="card">
-                        <img :src="roomsLogo"></img>
-                        <p class="paragraph--black-bold">Rooms</p>
-                    </div>
-                
+                    <transition name="fade-up" appear>
+                        <div v-show="visible[4]" @click="goToPage('rooms')" class="card">
+                            <img :src="roomsLogo"></img>
+                            <p class="paragraph--black-bold">Rooms</p>
+                        </div>
+                    </transition>
                 </div>
             </div>
 

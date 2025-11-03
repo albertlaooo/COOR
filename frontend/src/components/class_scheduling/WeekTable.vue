@@ -367,7 +367,10 @@ const filteredRooms = computed(() => {
 
   const searchTerm = inputRoom.value.trim().toLowerCase()
   const hasTimeAndDay =
-    clickedTime.value && clickedTime.value.start != null && clickedTime.value.end != null && clickedDay.value
+    clickedTime.value &&
+    clickedTime.value.start != null &&
+    clickedTime.value.end != null &&
+    clickedDay.value
 
   // Map each room with occupancy info
   const roomsWithStatus = roomsDB.value.map(room => {
@@ -380,9 +383,10 @@ const filteredRooms = computed(() => {
         const newStart = clickedTime.value.start
         const newEnd = clickedTime.value.end
 
-        const roomSchedules = scheduleAssignmentDB.value.filter(sch =>
-          sch.room_id === room.room_id &&
-          sch.day_of_week.toLowerCase() === selectedDay
+        const roomSchedules = scheduleAssignmentDB.value.filter(
+          sch =>
+            sch.room_id === room.room_id &&
+            sch.day_of_week.toLowerCase() === selectedDay
         )
 
         const conflict = roomSchedules.find(sch => {
@@ -392,10 +396,15 @@ const filteredRooms = computed(() => {
         })
 
         if (conflict) {
-          isOccupied = true
-          occupiedBy =
-            sectionsDB.value.find(sec => sec.section_id === conflict.section_id)?.section_format ||
-            "Unknown section"
+          const section =
+            sectionsDB.value.find(sec => sec.section_id === conflict.section_id)
+          const sectionName = section?.section_format || "Unknown section"
+
+          // ✅ If the conflict is in current editing section. do NOT mark as occupied
+          if (sectionName !== selectedSection.value.section_format) {
+            isOccupied = true
+            occupiedBy = sectionName
+          }
         }
       } catch (error) {
         console.error(`Error checking room ${room.room_code}:`, error)
@@ -416,69 +425,119 @@ const filteredRooms = computed(() => {
   return sorted
 })
 
-// Filtered Teachers based on subject and availability.
+// Filtered Teachers based on subject, availability, and time conflicts.
 const filteredTeachersByInputSubject = computed(() => {
-  const rawInput = inputSubject.value?.trim().toLowerCase();
-  if (!rawInput || !clickedDay.value || !clickedTime.value) {
-    // No subject input or no day/time selected → return empty
-    return [];
-  }
+  if (!teachersDB.value) return []
 
-  const subjectName = rawInput.replace(/\(lec\)|\(lab\)/gi, '').trim();
+  const rawInput = inputSubject.value?.trim().toLowerCase()
+  const hasTimeAndDay =
+    clickedTime.value &&
+    clickedTime.value.start != null &&
+    clickedTime.value.end != null &&
+    clickedDay.value
 
-  // ensure the subject exists in filteredSubjectsForSubjectsTable ---
+  if (!rawInput || !hasTimeAndDay) return []
+
+  const subjectName = rawInput.replace(/\(lec\)|\(lab\)/gi, '').trim()
+
+  // ✅ Make sure subject exists in course-subjects list
   const matchedInCourseSubjects = filteredSubjectsForSubjectsTable.value.find(s =>
     s.subject_name?.toLowerCase().trim() === subjectName
-  );
+  )
+  if (!matchedInCourseSubjects) return []
 
-  if (!matchedInCourseSubjects) {
-    // If subject isn't present in the allowed course-subjects list,
-    // we must not suggest any teachers.
-    return [];
-  }
-  // ----------------------------------------------------------------------
+  const selectedDay = clickedDay.value.toLowerCase()
+  const newStart = clickedTime.value.start
+  const newEnd = clickedTime.value.end
 
-  return teachersDB.value.filter(teacher => {
-    // 1️⃣ Filter by subject
-    const teacherSubjects = teacherSubjectsDB.value.filter(
-      ts => ts.teacher_id === teacher.teacher_id
-    );
+  // Map each teacher with occupancy info
+  const teachersWithStatus = teachersDB.value
+    .map(teacher => {
+      let isOccupied = false
+      let occupiedBy = null
 
-    const hasSubject = teacherSubjects.some(ts => {
-      const cleanSubjectName = ts.subject_name
-        ?.toLowerCase()
-        .replace(/\(lec\)|\(lab\)/gi, '')
-        .trim();
+      try {
+        // 1️⃣ Check if teacher teaches the subject
+        const teacherSubjects = teacherSubjectsDB.value.filter(
+          ts => ts.teacher_id === teacher.teacher_id
+        )
 
-      return cleanSubjectName === subjectName;
-    });
+        const hasSubject = teacherSubjects.some(ts => {
+          const cleanSubjectName = ts.subject_name
+            ?.toLowerCase()
+            .replace(/\(lec\)|\(lab\)/gi, '')
+            .trim()
+          return cleanSubjectName === subjectName
+        })
 
-    if (!hasSubject) return false;
+        if (!hasSubject) return null
 
-    // 2️⃣ Filter by availability
-    const availability = teacherAvailabilityDB.value.filter(
-      t => t.teacher_id === teacher.teacher_id
-    );
+        // 2️⃣ Check availability
+        const availability = teacherAvailabilityDB.value.filter(
+          t => t.teacher_id === teacher.teacher_id
+        )
 
-    const day = dayMap[clickedDay.value]; // "Mon" → "Monday"
-    const start = clickedTime.value.start;
-    const end = clickedTime.value.end;
+        const day = dayMap[clickedDay.value] // e.g. "Mon" → "Monday"
+        const start = clickedTime.value.start
+        const end = clickedTime.value.end
 
-    const isAvailable = availability.some(avail => {
-      if (avail.day_of_week !== day) return false; // exact match
+        const isAvailable = availability.some(avail => {
+          if (avail.day_of_week !== day) return false
+          const availStart = toMinutes(avail.time_from || '00:00')
+          const availEnd = toMinutes(avail.time_to || '23:59')
+          return start >= availStart && end <= availEnd
+        })
 
-      const availStart = toMinutes(avail.time_from || '00:00');
-      const availEnd = toMinutes(avail.time_to || '23:59');
+        if (!isAvailable) return null
 
-      return start >= availStart && end <= availEnd;
-    });
+        // 3️⃣ Check for schedule conflicts (same as room logic)
+        const teacherSchedules = scheduleAssignmentDB.value.filter(
+          sch =>
+            sch.teacher_id === teacher.teacher_id &&
+            sch.day_of_week.toLowerCase() === selectedDay
+        )
 
-    return isAvailable;
-  });
-});
+        const conflict = teacherSchedules.find(sch => {
+          const start = Number(sch.start_time)
+          const end = Number(sch.end_time)
+          return newStart < end && newEnd > start // ⏰ overlap
+        })
+
+        if (conflict) {
+          const section =
+            sectionsDB.value.find(sec => sec.section_id === conflict.section_id)
+          const sectionName = section?.section_format || 'Unknown section'
+
+          // ✅ If the conflict is in the current editing section, don't mark as occupied
+          if (sectionName !== selectedSection.value.section_format) {
+            isOccupied = true
+            occupiedBy = sectionName
+          }
+        }
+      } catch (error) {
+        console.error(`Error checking teacher ${teacher.last_name}:`, error)
+      }
+
+      return { ...teacher, isOccupied, occupiedBy }
+    })
+    .filter(Boolean) // remove nulls
+
+  // 🔎 Apply name search (optional)
+  const searchTerm = inputTeacher.value?.trim().toLowerCase() || ''
+  const filtered = teachersWithStatus.filter(t => {
+    const fullName = `${t.last_name}, ${t.first_name}`.toLowerCase()
+    return fullName.includes(searchTerm)
+  })
+
+  // 🔹 Sort available teachers first (same as rooms)
+  const sorted = filtered.sort((a, b) => a.isOccupied - b.isOccupied)
+
+  return sorted
+})
+
 
 // 🧩 Disable teacher input if there are no matching teachers
-const isTeacherInputDisabled = computed(() => filteredTeachersByInputSubject.value.length === 0);
+const isTeacherInputDisabled = ref(true)
 //#endregion
 
 
@@ -510,11 +569,13 @@ function toggleEditTimeModal(which, time) {
 }
 
 function editTimeConfirm() {
+  // ✅ Check if start and end times are provided
   if (!inputStartTime.value || !inputEndTime.value) {
     alert('Please enter both start and end times.')
     return
   }
 
+  // ✅ Check if a time slot is selected
   if (!clickedTime.value) {
     alert('No time slot selected to update.')
     return
@@ -523,23 +584,48 @@ function editTimeConfirm() {
   const newStart = toMinutes(inputStartTime.value)
   const newEnd = toMinutes(inputEndTime.value)
 
-  // ⚠️ Check if same as existing time
+  // ✅ Check if the new time is the same as the old time
   if (newStart === clickedTime.value.start && newEnd === clickedTime.value.end) {
     toggleEditTimeModal('cancel')
     return
   }
 
+  // ✅ Check if end time is after start time
   if (newEnd <= newStart) {
     alert('End time must be later than start time.')
     return
   }
 
-  // ⚠️ Check for overlapping/conflicting times
-  const hasConflict = times.value.some(t => {
-    // Skip the currently edited time slot
-    if (t.start === clickedTime.value.start && t.end === clickedTime.value.end) return false
+  // ⚠️ Find the index in the reactive times array
+  const index = times.value.findIndex(
+    t => t.start === clickedTime.value.start && t.end === clickedTime.value.end
+  )
 
-    // Overlap condition: (newStart < existingEnd) && (newEnd > existingStart)
+  if (index === -1) {
+    console.warn('⚠️ Could not find the clicked time range to update.')
+    toggleEditTimeModal('cancel')
+    return
+  }
+
+  // ✅ Check if this row already has content (for this time slot)
+  const oldRangeStr = `${formatTime(clickedTime.value.start)}-${formatTime(clickedTime.value.end)}`
+  let hasContent = false
+  for (const day of Object.keys(schedule.value)) {
+    const daySchedule = schedule.value[day]
+    if (daySchedule && daySchedule[oldRangeStr] && Object.keys(daySchedule[oldRangeStr]).length > 0) {
+      hasContent = true
+      break
+    }
+  }
+
+  if (hasContent) {
+    alert('⚠️ This time slot already has scheduled content and cannot be edited.')
+    return
+  }
+
+  // ⚠️ Check for overlapping/conflicting times
+  const hasConflict = times.value.some((t, i) => {
+    if (i === index) return false // skip the currently edited time slot
     return newStart < t.end && newEnd > t.start
   })
 
@@ -548,37 +634,27 @@ function editTimeConfirm() {
     return
   }
 
-  // find the index in the reactive times array
-  const index = times.value.findIndex(
-    t => t.start === clickedTime.value.start && t.end === clickedTime.value.end
-  )
+  // ✅ Update the times array
+  times.value[index] = { start: newStart, end: newEnd }
 
-  if (index !== -1) {
-    const oldRangeStr = `${formatTime(clickedTime.value.start)}-${formatTime(clickedTime.value.end)}`
-    const newRangeStr = `${formatTime(newStart)}-${formatTime(newEnd)}`
-
-    // ✅ Update the times array
-    times.value[index] = { start: newStart, end: newEnd }
-
-    // ✅ Update schedule keys using the old range
-    for (const day of Object.keys(schedule.value)) {
-      const daySchedule = schedule.value[day]
-      if (daySchedule && daySchedule[oldRangeStr]) {
-        daySchedule[newRangeStr] = daySchedule[oldRangeStr]
-        delete daySchedule[oldRangeStr]
-      }
+  // ✅ Update schedule keys using the old range
+  for (const day of Object.keys(schedule.value)) {
+    const daySchedule = schedule.value[day]
+    if (daySchedule && daySchedule[oldRangeStr]) {
+      const newRangeStr = `${formatTime(newStart)}-${formatTime(newEnd)}`
+      daySchedule[newRangeStr] = daySchedule[oldRangeStr]
+      delete daySchedule[oldRangeStr]
     }
-
-    // ✅ Automatically sort from earliest to latest
-    times.value.sort((a, b) => a.start - b.start)
-
-    console.log('✅ Sorted times:', times.value)
-  } else {
-    console.warn('⚠️ Could not find the clicked time range to update.')
   }
+
+  // ✅ Automatically sort from earliest to latest
+  times.value.sort((a, b) => a.start - b.start)
+  console.log('✅ Sorted times:', times.value)
 
   toggleEditTimeModal('cancel')
 }
+
+
 //#endregion
 
 
@@ -732,14 +808,14 @@ function selectTeacher(tchrs) {
   teacherInputFocused.value = false
 }
 
-// ✅ Watcher for input subject with availability check
+// ✅ Watcher for input subject with availability + duration check
 watch([filteredTeachersByInputSubject, inputSubject], ([newTeachers, newSubject]) => {
-  // If input is empty
+  // ────────────────────────────────────────────────
+  // 🟤 CASE 1: Input is empty → reset everything
+  // ────────────────────────────────────────────────
   if (!newSubject || newSubject.trim() === '') {
-    // Reset subject type
     subjectTypeOptions.value = []
     subjectType.value = ''
-
     if (isInputSubjectOk.value) {
       isInputSubjectOk.value = false
       console.log('isInputSubjectOk:', isInputSubjectOk.value)
@@ -747,73 +823,190 @@ watch([filteredTeachersByInputSubject, inputSubject], ([newTeachers, newSubject]
     return
   }
 
-  // Find subject that matches the input
+  // ────────────────────────────────────────────────
+  // 🟣 Find matching subject from subjects table
+  // ────────────────────────────────────────────────
   const matchedSubject = filteredSubjectsForSubjectsTable.value.find(
     s => s.subject_name.toLowerCase() === newSubject.trim().toLowerCase()
   )
 
-  if (matchedSubject) {
-    // 🔹 Populate type options based on lecture/laboratory
-    let options = []
-    if (matchedSubject.lecture > 0) options.push({ label: 'Lec', disabled: false })
-    if (matchedSubject.laboratory > 0) options.push({ label: 'Lab', disabled: false })
+  if (!matchedSubject) {
+    // No match → reset fields
+    subjectTypeOptions.value = []
+    subjectType.value = ''
+    isInputSubjectOk.value = false
+    isTeacherInputDisabled.value = true
+    console.log('isInputSubjectOk:', isInputSubjectOk.value)
+    return
+  }
 
-    // 🔹 Check schedule to disable already used types
+  // ────────────────────────────────────────────────
+  // 🔵 Compute durations and time range
+  // ────────────────────────────────────────────────
+  const selectedDuration = clickedTime.value
+    ? clickedTime.value.end - clickedTime.value.start
+    : 0
+
+  const timeRange = clickedTime.value
+    ? `${formatTime12Hour(clickedTime.value.start)} - ${formatTime12Hour(clickedTime.value.end)}`
+    : ''
+
+  const lectureDuration = matchedSubject.lecture ? matchedSubject.lecture * 60 : 0
+  const labDuration = matchedSubject.laboratory ? matchedSubject.laboratory * 60 : 0
+
+  const canFitLecture = lectureDuration > 0 && selectedDuration === lectureDuration
+  const canFitLab = labDuration > 0 && selectedDuration === labDuration
+
+  // ────────────────────────────────────────────────
+  // 🟢 Build subject type options (Lec / Lab)
+  // ────────────────────────────────────────────────
+  let options = []
+  if (lectureDuration > 0) options.push({ label: 'Lec', disabled: !canFitLecture })
+  if (labDuration > 0) options.push({ label: 'Lab', disabled: !canFitLab })
+
+  const latestLog = logs.value.at(-1)?.message
+
+  // ────────────────────────────────────────────────
+  // Helper: Check if a subject type is already in the schedule
+  // ────────────────────────────────────────────────
+  const isAlreadyScheduled = (subjectName, type) => {
     for (const day in schedule.value) {
       for (const range in schedule.value[day]) {
         const entry = schedule.value[day][range]
-        if (entry.subject.toLowerCase() === newSubject.trim().toLowerCase()) {
-          const opt = options.find(o => o.label === entry.type)
-          if (opt) opt.disabled = true
+        if (
+          entry.subject.toLowerCase() === subjectName.trim().toLowerCase() &&
+          entry.type === type
+        ) {
+          return true
         }
       }
     }
+    return false
+  }
 
-    // ✅ Assign to reactive
-    subjectTypeOptions.value = options
+  // ────────────────────────────────────────────────
+  // 🔴 Log duration mismatches
+  // ────────────────────────────────────────────────
+// ✅ Lecture check
+  if (!canFitLecture && lectureDuration > 0) {
+    // Check if the Lecture component is already in the schedule
+    if (!isAlreadyScheduled(newSubject, 'Lec')) {
+      const msg = `Lecture: requires ${matchedSubject.lecture} hrs (selected: ${selectedDuration / 60} hrs)`
 
-    // Set default subjectType to first enabled option
-    const firstEnabled = options.find(o => !o.disabled)
-    subjectType.value = firstEnabled ? firstEnabled.label : ''
+      // Check recent logs one by one
+      let exists = false
+      for (let i = logs.value.length - 1; i >= 0; i--) {
+        if (logs.value[i].message === msg) {
+          exists = true
+          break
+        }
+      }
 
-    // ✅ Log teachers based on availability
-    const latestLog = logs.value.at(-1)?.message
-    if (newTeachers.length > 0) {
-      // Teachers are available
-      if (latestLog !== 'Teacher list ready!') {
-        logs.value.push({ message: 'Teacher list ready!', color: 'green' })
-      }
-      // ✅ Set input subject OK to true
-      if (!isInputSubjectOk.value) {
-        isInputSubjectOk.value = true
-        console.log('isInputSubjectOk:', isInputSubjectOk.value)
-      }
-    } else {
-      // No teachers available for the selected time/day
-      if (latestLog !== 'No available teachers for this time slot.') {
-        logs.value.push({
-          message: 'No available teachers for this time slot.',
-          color: 'red'
-        })
-      }
-      // ✅ Set input subject OK to false
-      if (isInputSubjectOk.value) {
-        isInputSubjectOk.value = false
-        console.log('isInputSubjectOk:', isInputSubjectOk.value)
+      if (!exists) {
+        logs.value.push({ message: msg, color: 'red' })
       }
     }
-  } else {
-    // 🔹 Clear type if input doesn't match any subject
+  }
+
+  // ✅ Laboratory check
+  if (!canFitLab && labDuration > 0) {
+    // Check if the Laboratory component is already in the schedule
+    if (!isAlreadyScheduled(newSubject, 'Lab')) {
+      const msg = `Laboratory: requires ${matchedSubject.laboratory} hrs (selected: ${selectedDuration / 60} hrs)`
+
+      // Check recent logs one by one
+      let exists = false
+      for (let i = logs.value.length - 1; i >= 0; i--) {
+        if (logs.value[i].message === msg) {
+          exists = true
+          break
+        }
+      }
+
+      if (!exists) {
+        logs.value.push({ message: msg, color: 'red' })
+      }
+    }
+  }
+
+  // ────────────────────────────────────────────────
+  // 🔴 If both can't fit → stop here
+  // ────────────────────────────────────────────────
+  if (!canFitLecture && !canFitLab) {
     subjectTypeOptions.value = []
     subjectType.value = ''
+    isInputSubjectOk.value = false
+    isTeacherInputDisabled.value = true
+    return
+  }
 
-    if (isInputSubjectOk.value) {
-      isInputSubjectOk.value = false
+  // ────────────────────────────────────────────────
+  // 🟣 Disable options already used in schedule
+  // ────────────────────────────────────────────────
+  for (const day in schedule.value) {
+    for (const range in schedule.value[day]) {
+      const entry = schedule.value[day][range]
+      if (entry.subject.toLowerCase() === newSubject.trim().toLowerCase()) {
+        const opt = options.find(o => o.label === entry.type)
+        if (opt) opt.disabled = true
+      }
+    }
+  }
+
+  // ────────────────────────────────────────────────
+  // 🟠 Handle enabled/disabled subject type options
+  // ────────────────────────────────────────────────
+  subjectTypeOptions.value = options
+  const firstEnabled = options.find(o => !o.disabled)
+  subjectType.value = firstEnabled ? firstEnabled.label : ''
+
+  const allDisabled = options.length > 0 && options.every(o => o.disabled)
+
+  // 🟥 If all options disabled → reset everything
+  if (allDisabled) {
+    subjectTypeOptions.value = []
+    subjectType.value = ''
+    isInputSubjectOk.value = false
+    isTeacherInputDisabled.value = true
+    console.log('All options disabled → subject reset')
+    return
+  }
+
+  // 🟩 If some options are available → log as selected
+  if (!allDisabled) {
+    const enabledLabels = options.filter(o => !o.disabled).map(o => o.label).join(', ')
+    const msg = `${matchedSubject.subject_name} (${enabledLabels}) Selected.`
+
+    // Check recent logs one by one from the end
+    let exists = false
+    for (let i = logs.value.length - 1; i >= 0; i--) {
+      if (logs.value[i].message === msg) {
+        exists = true
+        break
+      }
+    }
+
+    if (!exists) {
+      logs.value.push({ message: msg, color: 'green' })
+    }
+  }
+
+  // ────────────────────────────────────────────────
+  // 🟦 Handle teacher availability
+  // ────────────────────────────────────────────────
+  const latestTeacherLog = logs.value.at(-1)?.message
+  if (newTeachers.length > 0) {
+    if (latestTeacherLog !== 'Teacher list ready!') {
+      console.log('Teacher list ready!')
+    }
+
+    if (!isInputSubjectOk.value) {
+      isInputSubjectOk.value = true
+      isTeacherInputDisabled.value = false
       console.log('isInputSubjectOk:', isInputSubjectOk.value)
     }
   }
 })
-
 
 // ✅ Watcher for input room
 watch([filteredRooms, inputRoom], ([newFilteredRooms, newRoom]) => {
@@ -826,6 +1019,7 @@ watch([filteredRooms, inputRoom], ([newFilteredRooms, newRoom]) => {
   }
 
   const latestLog = logs.value.at(-1)?.message
+
   const matchedRoom = newFilteredRooms.find(
     r => r.room_code.toLowerCase() === newRoom.toLowerCase()
   )
@@ -852,7 +1046,7 @@ watch([filteredRooms, inputRoom], ([newFilteredRooms, newRoom]) => {
       if (latestLog !== message) {
         logs.value.push({
           message,
-          color: ''
+          color: 'blue'
         })
       }
 
@@ -870,8 +1064,7 @@ watch([filteredRooms, inputRoom], ([newFilteredRooms, newRoom]) => {
   }
 })
 
-
-// ✅ Watcher for input teacher
+// ✅ Watcher for input teacher (mirrors room watcher behavior)
 watch([filteredTeachersByInputSubject, inputTeacher], ([newFilteredTeachers, newTeacher]) => {
   if (!newTeacher || newTeacher.trim() === '') {
     if (isInputTeacherOk.value) {
@@ -883,38 +1076,47 @@ watch([filteredTeachersByInputSubject, inputTeacher], ([newFilteredTeachers, new
 
   const latestLog = logs.value.at(-1)?.message
 
+  // Normalize teacher name for exact match
   const matchedTeacher = newFilteredTeachers.find(t => {
-    const fullName = `${t.last_name}, ${t.first_name}`.toLowerCase()
-    return fullName === newTeacher.toLowerCase()
+    const fullName = `${t.last_name}, ${t.first_name}`.toLowerCase().trim()
+    return fullName === newTeacher.toLowerCase().trim()
   })
 
   if (matchedTeacher) {
-    const message = `Teacher ${matchedTeacher.last_name}, ${matchedTeacher.first_name} selected.`
-    if (latestLog !== message) {
-      logs.value.push({
-        message,
-        color: ''
-      })
-    }
-    if (!isInputTeacherOk.value) {
-      isInputTeacherOk.value = true
-      console.log('isInputTeacherOk:', isInputTeacherOk.value)
-    }
-  } else {
-    // Input changed but no match found
-    if (isInputTeacherOk.value) {
-      isInputTeacherOk.value = false
-      console.log('isInputTeacherOk:', isInputTeacherOk.value)
-    }
-
-    if (newFilteredTeachers.length === 0) {
-      const message = `No teachers found for "${newTeacher}".`
+    if (matchedTeacher.isOccupied) {
+      // 🚫 Teacher is occupied — show red log
+      const message = `${matchedTeacher.last_name}, ${matchedTeacher.first_name} is occupied by ${matchedTeacher.occupiedBy}.`
       if (latestLog !== message) {
         logs.value.push({
           message,
           color: 'red'
         })
       }
+
+      if (isInputTeacherOk.value) {
+        isInputTeacherOk.value = false
+        console.log('isInputTeacherOk:', isInputTeacherOk.value)
+      }
+    } else {
+      // ✅ Teacher available — normal log
+      const message = `Teacher ${matchedTeacher.last_name}, ${matchedTeacher.first_name} selected.`
+      if (latestLog !== message) {
+        logs.value.push({
+          message,
+          color: 'blue'
+        })
+      }
+
+      if (!isInputTeacherOk.value) {
+        isInputTeacherOk.value = true
+        console.log('isInputTeacherOk:', isInputTeacherOk.value)
+      }
+    }
+  } else {
+    // Input changed but no exact match found
+    if (isInputTeacherOk.value) {
+      isInputTeacherOk.value = false
+      console.log('isInputTeacherOk:', isInputTeacherOk.value)
     }
   }
 })
@@ -945,8 +1147,6 @@ watch([isInputSubjectOk, isInputRoomOk, isInputTeacherOk], ([subjectOk, roomOk, 
     }
   }
 })
-
-
 
 function handleClickOutside(event) {
     if (subjectWrapper.value && !subjectWrapper.value.contains(event.target)) {
@@ -1049,7 +1249,6 @@ const saveScheduleToDB = async () => {
         // ✅ Sync to prevent unsaved changes prompt
         originalSchedule.value = JSON.parse(JSON.stringify(schedule.value))
         originalTimes.value = JSON.parse(JSON.stringify(times.value))
-        originalDefaultTimes.value = JSON.parse(JSON.stringify(defaultTimes.value))
       } else {
         alert('Failed to save')
         return
@@ -1498,6 +1697,7 @@ function discardChanges() {
                                     <div v-for="tchrs in filteredTeachersByInputSubject" 
                                         :key="tchrs.teacher_id"
                                         class="dropdown-item"
+                                        :class="{ 'occupied': tchrs.isOccupied }"
                                         @click="selectTeacher(tchrs)">
                                         {{ tchrs.last_name + ', ' + tchrs.first_name }}
                                     </div>
@@ -1780,6 +1980,7 @@ td {
     cursor: pointer;
     transition: all ease 0.1s;
     min-width: 135px;
+    background-color: white;
 }
 
 .cell > p:nth-of-type(1) {

@@ -60,6 +60,14 @@ db.serialize(() => {
     `);
 
     db.run(`
+        CREATE TABLE IF NOT EXISTS Notes (
+          note_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          note TEXT NOT NULL,
+          pinned INTEGER NOT NULL DEFAULT 0
+        );
+    `);
+
+    db.run(`
         CREATE TABLE IF NOT EXISTS Teachers (
           teacher_id INTEGER PRIMARY KEY AUTOINCREMENT,
           first_name TEXT NOT NULL,
@@ -283,6 +291,111 @@ app.post("/check-password", (req, res) => {
   });
 });
 
+/*////////////////////////////////////////////////////////////////////////
+/////////////////////////  Notes  //////////////////////////////////////
+////////////////////////////////////////////////////////////////////////*/ 
+// ADD NOTE
+app.post("/add-note", (req, res) => {
+  const { note, pinned = 0 } = req.body;
+
+  if (!note) {
+    return res.status(400).json({ success: false, message: "Note is required" });
+  }
+
+  const sql = `
+    INSERT INTO Notes (note, pinned)
+    VALUES (?, ?)
+  `;
+
+  db.run(sql, [note, pinned], function (err) {
+    if (err) {
+      console.error("❌ Error inserting note:", err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+    res.json({
+      success: true,
+      message: "Note added successfully",
+      note_id: this.lastID,
+    });
+  });
+});
+
+// GET ALL NOTES (pinned first, oldest to newest)
+app.get("/notes", (req, res) => {
+  const sql = `
+    SELECT * FROM Notes
+    ORDER BY pinned DESC, note_id DESC;
+  `;
+
+  db.all(sql, [], (err, rows) => {
+    if (err) {
+      console.error("❌ Error fetching notes:", err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+    res.json({ success: true, notes: rows });
+  });
+});
+
+// DELETE NOTE
+app.delete("/delete-note/:id", (req, res) => {
+  const { id } = req.params;
+  const sql = `DELETE FROM Notes WHERE note_id = ?`;
+
+  db.run(sql, [id], function (err) {
+    if (err) {
+      console.error("❌ Error deleting note:", err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({ success: false, message: "Note not found" });
+    }
+
+    res.json({ success: true, message: "Note deleted successfully" });
+  });
+});
+
+// UPDATE NOTE
+app.put("/update-note/:id", (req, res) => {
+  const { id } = req.params;
+  const { note, pinned } = req.body;
+
+  if (note === undefined && pinned === undefined) {
+    return res.status(400).json({ success: false, message: "No fields to update" });
+  }
+
+  const fields = [];
+  const values = [];
+
+  if (note !== undefined) {
+    fields.push("note = ?");
+    values.push(note);
+  }
+  if (pinned !== undefined) {
+    fields.push("pinned = ?");
+    values.push(pinned);
+  }
+
+  values.push(id);
+
+  const sql = `
+    UPDATE Notes
+    SET ${fields.join(", ")}
+    WHERE note_id = ?
+  `;
+
+  db.run(sql, values, function (err) {
+    if (err) {
+      console.error("❌ Error updating note:", err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+    res.json({
+      success: true,
+      message: "Note updated successfully",
+      updated: this.changes,
+    });
+  });
+});
 
 /*////////////////////////////////////////////////////////////////////////
 /////////////////////////  TEACHER  //////////////////////////////////////
@@ -308,7 +421,6 @@ app.post("/add-teacher", (req, res) => {
     res.json({ success: true, message: "Teacher added successfully", teacher_id: this.lastID });
   });
 });
-
 
 // READ all teachers (with departments, subjects, and availability)
 app.get("/teachers", (req, res) => {
@@ -1854,6 +1966,41 @@ app.get("/get-schedule/:section_id", (req, res) => {
     }
   );
 });
+
+// Get conflicts
+app.get("/get-conflicts", (req, res) => {
+  db.all("SELECT * FROM ScheduleAssignments", [], (err, schedules) => {
+    if (err) {
+      return res.status(500).json({ error: err.message })
+    }
+
+    let conflictCount = 0
+
+    for (let i = 0; i < schedules.length; i++) {
+      for (let j = i + 1; j < schedules.length; j++) {
+        const a = schedules[i]
+        const b = schedules[j]
+
+        // Check if same day
+        if (a.day_of_week === b.day_of_week) {
+          // Check if time overlaps
+          const overlap = a.start_time < b.end_time && a.end_time > b.start_time
+
+          // Check if same teacher, room, or section
+          const sameTeacher = a.teacher_id === b.teacher_id
+          const sameRoom = a.room_id === b.room_id
+          const sameSection = a.section_id === b.section_id
+
+          if (overlap && (sameTeacher || sameRoom || sameSection)) {
+            conflictCount++
+          }
+        }
+      }
+    }
+
+    res.json({ conflictCount })
+  })
+})
 
 
 /*////////////////////////////////////////////////////////////////////////
