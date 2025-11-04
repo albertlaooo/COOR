@@ -8,6 +8,7 @@
     // USER DATA INPUT
     const firstName = ref('')
     const lastName = ref('')
+    const gender = ref('')
     const department = ref('')
     const subject = ref('')
 
@@ -331,6 +332,7 @@
     const teacherConfirm = async () => {
         if(firstName.value !== '' &&
             lastName.value !== '' &&
+            gender.value !== '' &&
             selectedDepartments.value.length !== 0 &&
             selectedSubjects.value.length !== 0 &&
             days.value.some(day => day.checked && day.from && day.to)){
@@ -339,8 +341,9 @@
                 try {
                     // Add to Teachers Table
                     const resTeacher = await axios.post("http://localhost:3000/add-teacher", {
-                        first_name: firstName.value.charAt(0).toUpperCase() + firstName.value.slice(1).toLowerCase(),
-                        last_name: lastName.value.charAt(0).toUpperCase() + lastName.value.slice(1).toLowerCase()
+                        first_name: firstName.value.trim().charAt(0).toUpperCase() + firstName.value.trim().slice(1).toLowerCase(),
+                        last_name: lastName.value.trim().charAt(0).toUpperCase() + lastName.value.trim().slice(1).toLowerCase(),
+                        gender: gender.value
                     });
                     console.log(resTeacher.data.message);
 
@@ -386,8 +389,9 @@
             else if(teacherHandler.value === 'update'){
                 try {
                     const res = await axios.put(`http://localhost:3000/update-teacher/${selectedTeacher.value.teacher_id}`, {
-                        first_name: firstName.value.charAt(0).toUpperCase() + firstName.value.slice(1).toLowerCase(),
-                        last_name: lastName.value.charAt(0).toUpperCase() + lastName.value.slice(1).toLowerCase()
+                        first_name: firstName.value.trim().charAt(0).toUpperCase() + firstName.value.trim().slice(1).toLowerCase(),
+                        last_name: lastName.value.trim().charAt(0).toUpperCase() + lastName.value.trim().slice(1).toLowerCase(),
+                        gender: gender.value
                     });
 
                     const teacherId = selectedTeacher.value.teacher_id;
@@ -459,6 +463,7 @@
             teacherHandler.value = 'update'
             firstName.value = selectedTeacher.value.first_name
             lastName.value = selectedTeacher.value.last_name
+            gender.value = selectedTeacher.value.gender
 
             try {
                 // Fetch departments
@@ -549,10 +554,13 @@
             teacher_id: teacher.teacher_id,
             first_name: teacher.first_name,
             last_name: teacher.last_name,
+            gender: teacher.gender,
             departments: teacher.departments,
             subjects: teacher.subjects,
             availability: teacher.availability
         }));
+
+        console.log(teachersDB.value)
 
     } catch (err) {
         console.error("Error fetching teachers:", err)
@@ -592,6 +600,7 @@
         setTimeout(() => {
             firstName.value = ''
             lastName.value = ''
+            gender.value = ''
             department.value = ''
             selectedDepartments.value.splice(0, selectedDepartments.value.length)
             subject.value = ''
@@ -713,11 +722,21 @@
 
                         <!-- Left section -->
                         <div style="display: flex; flex-direction: column; gap: 14px; flex: 1">
-                             <div style="display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; column-gap: 15px; ">
+
+                            <div style="display: flex; flex-direction: column; gap: 15px;">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">First Name</p>
-                                <p class="paragraph--black-bold" style="line-height: 1.8;">Last Name</p>
                                 <input v-model="firstName" :class="{ 'error-input-border': showErrorInput && firstName.trim() === '' }"></input>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: auto 140px; grid-template-rows: auto auto; column-gap: 15px; ">
+                                
+                                <p class="paragraph--black-bold" style="line-height: 1.8;">Last Name</p>
+                                <p class="paragraph--black-bold" style="line-height: 1.8;">Gender</p>
                                 <input v-model="lastName" :class="{ 'error-input-border': showErrorInput && lastName.trim() === '' }"></input>
+                                <select v-model="gender" style="width: 100%;">
+                                    <option value="male">Male</option>
+                                    <option value="female">Female</option>
+                                </select>
                             </div>
 
                             <!-- Departments -->

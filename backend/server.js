@@ -71,7 +71,8 @@ db.serialize(() => {
         CREATE TABLE IF NOT EXISTS Teachers (
           teacher_id INTEGER PRIMARY KEY AUTOINCREMENT,
           first_name TEXT NOT NULL,
-          last_name TEXT NOT NULL
+          last_name TEXT NOT NULL,
+          gender TEXT NOT NULL
         );
     `);
 
@@ -402,23 +403,31 @@ app.put("/update-note/:id", (req, res) => {
 ////////////////////////////////////////////////////////////////////////*/ 
 // Insert Teacher
 app.post("/add-teacher", (req, res) => {
-  const { first_name, last_name } = req.body;
+  const { first_name, last_name, gender } = req.body;
 
-  if (!first_name || !last_name) {
-    return res.status(400).json({ success: false, message: "Missing required fields" });
+  if (!first_name || !last_name || !gender) {
+    return res.status(400).json({ 
+      success: false, 
+      message: "Missing required fields" 
+    });
   }
 
   const sql = `
-    INSERT INTO Teachers (first_name, last_name)
-    VALUES (?, ?)
+    INSERT INTO Teachers (first_name, last_name, gender)
+    VALUES (?, ?, ?)
   `;
 
-  db.run(sql, [first_name, last_name], function (err) {
+  db.run(sql, [first_name, last_name, gender], function (err) {
     if (err) {
       console.error("Error inserting teacher:", err.message);
       return res.status(500).json({ success: false, message: "Database error" });
     }
-    res.json({ success: true, message: "Teacher added successfully", teacher_id: this.lastID });
+
+    res.json({
+      success: true,
+      message: "Teacher added successfully",
+      teacher_id: this.lastID
+    });
   });
 });
 
@@ -429,6 +438,7 @@ app.get("/teachers", (req, res) => {
       t.teacher_id,
       t.first_name,
       t.last_name,
+      t.gender,
       COALESCE(
         (SELECT GROUP_CONCAT(d.department_code, ', ')
          FROM TeacherDepartments td
@@ -485,29 +495,29 @@ app.delete("/teachers/:id", (req, res) => {
   });
 });
 
-// UPDATE teacher
+// UPDATE Teacher
 app.put("/update-teacher/:id", (req, res) => {
   const { id } = req.params;
-  const { first_name, last_name } = req.body;
+  const { first_name, last_name, gender } = req.body;
 
-  if (!first_name || !last_name) {
+  if (!first_name || !last_name || !gender) {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
   const sql = `
     UPDATE Teachers
-    SET first_name = ?, last_name = ?
+    SET first_name = ?, last_name = ?, gender = ?
     WHERE teacher_id = ?
   `;
 
-  db.run(sql, [first_name, last_name, id], function (err) {
+  db.run(sql, [first_name, last_name, gender, id], function (err) {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
+
     res.json({ updated: this.changes });
   });
 });
-
 
 /*////////////////////////////////////////////////////////////////////////
 /////////////////////////  TEACHER DEPARTMENT  ///////////////////////////
@@ -1929,6 +1939,7 @@ app.get("/get-schedule/:section_id", (req, res) => {
         COALESCE(sub.subject_name, 'null') AS subject_name, 
         COALESCE(r.room_code, 'null') AS room_code, 
         COALESCE(t.last_name || ', ' || t.first_name, 'null') AS teacher, 
+        t.gender AS gender,
         s.type
      FROM ScheduleAssignments s
      LEFT JOIN Subjects sub ON s.subject_id = sub.subject_id
@@ -1958,6 +1969,7 @@ app.get("/get-schedule/:section_id", (req, res) => {
           subject: row.subject_name,
           room: row.room_code,
           teacher: row.teacher,
+          gender: row.gender,
           type: row.type,
         };
       });

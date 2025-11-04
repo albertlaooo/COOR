@@ -53,8 +53,9 @@ const fetchSections = async () => {
     }
 }
 
-const fetchAllSchedules = async () => {
+const schedulesNullCheck = async () => {
   try {
+    // Fetch all schedules
     const response = await axios.get('http://localhost:3000/get-all-schedules')
     schedules.value = response.data
 
@@ -65,47 +66,68 @@ const fetchAllSchedules = async () => {
       sch.teacher_id === null
     )
 
-    // Get unique section IDs from those null schedules
+    // Log which section has null fields
+    nullSchedules.forEach(sch => {
+      const nullFields = []
+      if (sch.subject_id === null) nullFields.push('subject')
+      if (sch.room_id === null) nullFields.push('room')
+      if (sch.teacher_id === null) nullFields.push('teacher')
+      console.log(`Section ${sch.section_id} has null fields: ${nullFields.join(', ')}`)
+    })
+
+    // Get unique section IDs from null schedules
     nullSectionIds.value = [...new Set(nullSchedules.map(sch => sch.section_id))]
 
-    // Only update status if there are null schedules
+    // Mark sections with null schedules as "Partially Set" temporarily
     if (nullSectionIds.value.length > 0) {
       for (const sectionId of nullSectionIds.value) {
         await updateScheduleStatus(sectionId, "Partially Set")
       }
     }
 
-    // -------------------- New Logic: Count assigned and required subjects --------------------
+    // -------------------- Count assigned and required subjects per section --------------------
     const sectionSubjectCounts = {} // { section_id: { assigned: X, required: Y } }
 
-    for (const section of await getSections()) { // getSections() fetches all sections from API
-        const sectionId = section.section_id
+    const allSections = await getSections() // fetch all sections
 
-        // 1️⃣ Count assigned subjects for this section
-        const assignedCount = schedules.value.filter(sch => sch.section_id === sectionId).length
+    for (const section of allSections) {
+      const sectionId = section.section_id
 
-        // 2️⃣ Count required subjects for this section
-        const courseSubjects = await getRequiredSubjectsForSection(sectionId) // fetch("/courses/:id/subjects")
+      // All schedules for this section
+      const sectionSchedules = schedules.value.filter(sch => sch.section_id === sectionId)
 
-        let requiredCount = 0
-        courseSubjects.forEach(sub => {
-            const hasLecture = sub.lecture && sub.lecture > 0
-            const hasLab = sub.laboratory && sub.laboratory > 0
+      // Count only fully assigned schedules
+      const assignedCount = sectionSchedules.filter(sch =>
+        sch.subject_id !== null &&
+        sch.room_id !== null &&
+        sch.teacher_id !== null
+      ).length
 
-            if (hasLecture && hasLab) requiredCount += 2
-            else if (hasLecture || hasLab) requiredCount += 1
-        })
+      // Count required subjects for this section
+      const courseSubjects = await getRequiredSubjectsForSection(sectionId)
 
-        sectionSubjectCounts[sectionId] = { assigned: assignedCount, required: requiredCount }
+      let requiredCount = 0
+      courseSubjects.forEach(sub => {
+        const hasLecture = sub.lecture && sub.lecture > 0
+        const hasLab = sub.laboratory && sub.laboratory > 0
 
-        // -------------------- Update schedule status based on counts --------------------
-        if (assignedCount === 0) {
-            await updateScheduleStatus(sectionId, "Unset")
-        } else if (assignedCount < requiredCount) {
-            await updateScheduleStatus(sectionId, "Partially Set")
-        } else if (assignedCount === requiredCount) {
-            await updateScheduleStatus(sectionId, "Complete")
-        }
+        if (hasLecture && hasLab) requiredCount += 2
+        else if (hasLecture || hasLab) requiredCount += 1
+      })
+
+      sectionSubjectCounts[sectionId] = { assigned: assignedCount, required: requiredCount }
+
+      // -------------------- Update schedule status --------------------
+      if (sectionSchedules.length === 0) {
+        // No schedules at all
+        await updateScheduleStatus(sectionId, "Unset")
+      } else if (assignedCount < requiredCount) {
+        // Some schedules exist but not fully assigned
+        await updateScheduleStatus(sectionId, "Partially Set")
+      } else if (assignedCount === requiredCount) {
+        // Fully assigned schedules
+        await updateScheduleStatus(sectionId, "Complete")
+      }
     }
 
   } catch (error) {
@@ -113,6 +135,8 @@ const fetchAllSchedules = async () => {
     console.log('Failed to load schedules.')
   }
 }
+
+
 // Helper: fetch all sections
 const getSections = async () => {
   const res = await axios.get('http://localhost:3000/sections')
@@ -260,7 +284,7 @@ const filteredTeachers = computed(() => {
 
 
 onMounted(async () => {
-  await fetchAllSchedules()
+  await schedulesNullCheck()
   await fetchSections()
   await fetchTeachers()
 })
@@ -481,7 +505,7 @@ function goToPage(section) {
 watch(
   () => route.fullPath, // or route.name
   () => {
-    fetchAllSchedules()
+    schedulesNullCheck()
     fetchSections()
   }
 )

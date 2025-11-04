@@ -184,6 +184,7 @@ const fetchTimeColumn = async () => {
     times.value = defaultTimes
   }
 }
+//#endregion
 
 //#region 🕒 TIME CONVERSION UTILITIES
 // 🔹 Converts "7:00" → 420, "1:30" → 90, etc.
@@ -234,7 +235,8 @@ const loadScheduleDetails = () => {
       details.push({
         code: item.subject_code || 'N/A',
         title: item.subject || 'N/A',
-        professor: item.teacher || 'N/A'
+        professor: item.teacher || 'N/A',
+        gender: item.gender || 'N/A'
       })
     }
   }
@@ -244,7 +246,7 @@ const loadScheduleDetails = () => {
   const seen = new Set()
 
   for (const d of details) {
-    const key = `${d.code}|${d.title}|${d.professor}`
+    const key = `${d.code}|${d.title}|${d.professor}|${d.gender}`
     if (!seen.has(key)) {
       seen.add(key)
       uniqueDetails.push(d)
@@ -255,6 +257,21 @@ const loadScheduleDetails = () => {
   console.log('Unique scheduleDetails:', scheduleDetails.value)
 }
 //#endregion
+
+const formatTeacher = (teacherFull, gender, showFull = false) => {
+  if (!teacherFull || teacherFull === 'null') return 'N/A';
+
+  const prefix = gender === 'male' ? 'Mr.' : gender === 'female' ? 'Ms.' : '';
+  const [lastName, firstName] = teacherFull.split(',').map(s => s.trim());
+
+  if (showFull && firstName) {
+    // Mr. Smith, John
+    return `${prefix} ${lastName}, ${firstName}`;
+  } else {
+    // Mr. Smith
+    return `${prefix} ${lastName}`;
+  }
+};
 
 async function exportPDF() {
   const element = document.getElementById('pdf-content')
@@ -335,7 +352,14 @@ async function exportPDF() {
                         <div style="display: flex; flex-direction: row; gap: 4px;">
                             <p>{{ schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].subject_code }}</p>
                         </div>
-                        <p>Mr. {{ schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].teacher.split(',')[0] }}</p>
+                        <p>
+                          {{
+                            formatTeacher(
+                              schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].teacher,
+                              schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].gender
+                            )
+                          }}
+                        </p>
                         
                     </template>
                 </div>
@@ -356,7 +380,7 @@ async function exportPDF() {
             <tr v-for="(subject, index) in scheduleDetails" :key="index">
               <td>{{ subject.code }}</td>
               <td>{{ subject.title }}</td>
-              <td>{{ subject.professor }}</td>
+              <td>{{ formatTeacher(subject.professor, subject.gender, true) }}</td>
             </tr>
           </tbody>
         </table>

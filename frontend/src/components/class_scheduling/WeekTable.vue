@@ -840,6 +840,14 @@ watch([filteredTeachersByInputSubject, inputSubject], ([newTeachers, newSubject]
     return
   }
 
+  if(matchedSubject){
+    if (!isInputSubjectOk.value) {
+      isInputSubjectOk.value = true
+      isTeacherInputDisabled.value = false
+      console.log('isInputSubjectOk:', isInputSubjectOk.value)
+    }
+  }
+
   // ────────────────────────────────────────────────
   // 🔵 Compute durations and time range
   // ────────────────────────────────────────────────
@@ -990,22 +998,6 @@ watch([filteredTeachersByInputSubject, inputSubject], ([newTeachers, newSubject]
       logs.value.push({ message: msg, color: 'green' })
     }
   }
-
-  // ────────────────────────────────────────────────
-  // 🟦 Handle teacher availability
-  // ────────────────────────────────────────────────
-  const latestTeacherLog = logs.value.at(-1)?.message
-  if (newTeachers.length > 0) {
-    if (latestTeacherLog !== 'Teacher list ready!') {
-      console.log('Teacher list ready!')
-    }
-
-    if (!isInputSubjectOk.value) {
-      isInputSubjectOk.value = true
-      isTeacherInputDisabled.value = false
-      console.log('isInputSubjectOk:', isInputSubjectOk.value)
-    }
-  }
 })
 
 // ✅ Watcher for input room
@@ -1064,7 +1056,7 @@ watch([filteredRooms, inputRoom], ([newFilteredRooms, newRoom]) => {
   }
 })
 
-// ✅ Watcher for input teacher (mirrors room watcher behavior)
+// ✅ Watcher for input teacher
 watch([filteredTeachersByInputSubject, inputTeacher], ([newFilteredTeachers, newTeacher]) => {
   if (!newTeacher || newTeacher.trim() === '') {
     if (isInputTeacherOk.value) {
@@ -1631,15 +1623,24 @@ function discardChanges() {
                                         :class="{ 'error-input-border': showErrorInput && !isInputSubjectOk }"></input>
 
                                 <!-- Dropdown suggestions -->
-                                <div v-if="subjectInputFocused && filteredSubjects.length" 
-                                    class="dropdown" style="z-index: 2;"> 
+                                <div v-if="subjectInputFocused" class="dropdown" style="z-index: 2;">
+                                  <!-- Show subjects if any -->
+                                  <div 
+                                    v-for="(csubj, index) in filteredSubjects" 
+                                    :key="csubj.subject_id" 
+                                    @click="selectSubject(csubj)" 
+                                    class="dropdown-item"
+                                  >
+                                    {{ csubj.subject_name }}
+                                  </div>
 
-                                    <div v-for="(csubj, index) in filteredSubjects" 
-                                        :key="csubj.subject_id"
-                                        @click="selectSubject(csubj)"
-                                        class="dropdown-item">
-                                        {{ csubj.subject_name }}
-                                    </div>
+                                  <!-- Show "No results" if empty -->
+                                  <div 
+                                    v-if="filteredSubjects.length === 0" 
+                                    class="dropdown-item no-result"
+                                    style="text-align: center; color: #7F8D9C; font-style: italic;">
+                                    -- No results --
+                                  </div>
                                 </div>
                             </div>
                           </div>
@@ -1664,17 +1665,27 @@ function discardChanges() {
                                         :class="{ 'error-input-border': showErrorInput && !isInputRoomOk }"></input>
 
                                 <!-- Dropdown suggestions -->
-                                <div v-if="roomInputFocused && filteredRooms.length" 
-                                    class="dropdown" style="z-index: 2;"> 
+                                <div v-if="roomInputFocused" class="dropdown" style="z-index: 2;">
+                                  <!-- Show rooms if any -->
+                                  <div 
+                                    v-for="rm in filteredRooms" 
+                                    :key="rm.room_id" 
+                                    class="dropdown-item" 
+                                    :class="{ 'occupied': rm.isOccupied }" 
+                                    @click="selectRoom(rm)"
+                                  >
+                                    {{ rm.room_code }}
+                                  </div>
 
-                                    <div v-for="rm in filteredRooms" 
-                                        :key="rm.room_id"
-                                        class="dropdown-item"
-                                        :class="{ 'occupied': rm.isOccupied }"
-                                        @click="selectRoom(rm)">
-                                        {{ rm.room_code }}
-                                    </div>
+                                  <!-- Show "No results" if empty -->
+                                  <div 
+                                    v-if="filteredRooms.length === 0" 
+                                    class="dropdown-item no-result"
+                                    style="text-align: center; color: #7F8D9C; font-style: italic;">
+                                    -- No results --
+                                  </div>
                                 </div>
+
                             </div>
                         </div>
 
@@ -1691,16 +1702,25 @@ function discardChanges() {
                                         }"></input>
 
                                 <!-- Dropdown suggestions -->
-                                <div v-if="teacherInputFocused && filteredTeachersByInputSubject.length" 
-                                    class="dropdown" style="z-index: 2;"> 
+                                <div v-if="teacherInputFocused" class="dropdown" style="z-index: 2;">
+                                  <!-- Show teachers if any -->
+                                  <div 
+                                    v-for="tchrs in filteredTeachersByInputSubject" 
+                                    :key="tchrs.teacher_id" 
+                                    class="dropdown-item" 
+                                    :class="{ 'occupied': tchrs.isOccupied }" 
+                                    @click="selectTeacher(tchrs)"
+                                  >
+                                    {{ tchrs.last_name + ', ' + tchrs.first_name }}
+                                  </div>
 
-                                    <div v-for="tchrs in filteredTeachersByInputSubject" 
-                                        :key="tchrs.teacher_id"
-                                        class="dropdown-item"
-                                        :class="{ 'occupied': tchrs.isOccupied }"
-                                        @click="selectTeacher(tchrs)">
-                                        {{ tchrs.last_name + ', ' + tchrs.first_name }}
-                                    </div>
+                                  <!-- Show "No results" if empty -->
+                                  <div 
+                                    v-if="filteredTeachersByInputSubject.length === 0" 
+                                    class="dropdown-item no-result"
+                                    style="text-align: center; color: #7F8D9C; font-style: italic;">
+                                    -- No results --
+                                  </div>
                                 </div>
                             </div>
                         </div>

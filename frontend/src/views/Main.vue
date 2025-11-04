@@ -137,6 +137,10 @@ async function changePasswordConfirm() {
 function toggleChangePasswordModal(){
   isChangePasswordModalVisible.value = !isChangePasswordModalVisible.value
 
+  if(isChangePasswordModalVisible.value === false){
+    settingsRotated.value = !settingsRotated.value
+  }
+
   setTimeout(() => {
     currentPassword.value = '';
     newPassword.value = '';

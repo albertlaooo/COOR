@@ -320,9 +320,98 @@ onMounted(() => {
 
 //#region UNASSIGN SECTIONS CHECKER
 const unassignedSectionCount = ref(0)
+const isUnassignedSectionsFetching = ref(false)
+const isScheduleConflictsFetching = ref(false)
+
+const schedulesNullCheck = async () => {
+  try {
+    // 1️⃣ Fetch all schedules
+    const scheduleRes = await axios.get('http://localhost:3000/get-all-schedules')
+    const schedulesData = scheduleRes.data
+
+    // 2️⃣ Fetch all sections
+    const sectionsRes = await axios.get('http://localhost:3000/sections')
+    const sectionsData = sectionsRes.data
+
+    // 3️⃣ Collect section IDs with null fields
+    const nullSectionIdsLocal = []
+
+    // 4️⃣ Process each section
+    for (const section of sectionsData) {
+      const sectionId = section.section_id
+
+      // a) Filter schedules for this section
+      const sectionSchedules = schedulesData.filter(sch => sch.section_id === sectionId)
+
+      // b) Count fully assigned schedules
+      const assignedCount = sectionSchedules.filter(sch =>
+        sch.subject_id !== null &&
+        sch.room_id !== null &&
+        sch.teacher_id !== null
+      ).length
+
+      // c) Count required subjects
+      const reqRes = await axios.get(`http://localhost:3000/sections/${sectionId}/subjects-required`)
+      const requiredSubjects = reqRes.data
+
+      let requiredCount = 0
+      requiredSubjects.forEach(sub => {
+        const hasLecture = sub.lecture && sub.lecture > 0
+        const hasLab = sub.laboratory && sub.laboratory > 0
+        if (hasLecture && hasLab) requiredCount += 2
+        else if (hasLecture || hasLab) requiredCount += 1
+      })
+
+      // d) Determine status
+      let status = ''
+      if (sectionSchedules.length === 0) {
+        // No schedules at all → Unset
+        status = 'Unset'
+      } else if (assignedCount < requiredCount) {
+        // Some schedules exist but not fully assigned → Partially Set
+        status = 'Partially Set'
+      } else if (assignedCount === requiredCount) {
+        // Fully assigned → Complete
+        status = 'Complete'
+      }
+
+      // e) Update schedule status
+      try {
+        await axios.put(
+          `http://localhost:3000/update-schedule-status/${sectionId}`,
+          { schedule_status: status }
+        )
+      } catch (err) {
+        console.error(`Error updating schedule status for section ${sectionId}:`, err)
+        alert("Error saving data for section " + sectionId)
+      }
+
+      // f) Log null fields and collect null section IDs
+      sectionSchedules.forEach(sch => {
+        const nullFields = []
+        if (sch.subject_id === null) nullFields.push('subject')
+        if (sch.room_id === null) nullFields.push('room')
+        if (sch.teacher_id === null) nullFields.push('teacher')
+        if (nullFields.length > 0) {
+          console.log(`Section ${sectionId} has null fields: ${nullFields.join(', ')}`)
+          if (!nullSectionIdsLocal.includes(sectionId)) nullSectionIdsLocal.push(sectionId)
+        }
+      })
+    }
+
+    console.log('Null section IDs:', nullSectionIdsLocal)
+    // Optionally, if you have refs in your component:
+    // schedules.value = schedulesData
+    // nullSectionIds.value = nullSectionIdsLocal
+
+  } catch (error) {
+    console.error('Error fetching schedules or updating status:', error)
+  }
+}
 
 // Count sections with "Unset" or "Partially Set" schedule_status
 async function countUnassignedSections() {
+    // Count Unset and Partially Set Sections
     const response = await fetch("http://localhost:3000/sections")
     const data = await response.json()
 
@@ -344,12 +433,6 @@ async function countUnassignedSections() {
     ).length
 }
 
-//#endregion
-
-//#region NAVIGATION
-function goToPage(which){
-    router.push(which)
-}
 //#endregion
 
 //#region CONFLICT CHECKER
@@ -497,25 +580,36 @@ async function countRooms() {
 
 //#endregion
 
+//#region NAVIGATION
+function goToPage(which){
+    router.push(which)
+}
+//#endregion
+
 //#region 🚀 LIFECYCLE
 onMounted(async () => {
-  const now = new Date()
-  currentDate.value = now.toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric'
-  })
+    const now = new Date()
+        currentDate.value = now.toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+    })
 
-  await fetchLatestTerm()
-  await countUnassignedSections()
-  await fetchSchedulesAndCheckConflicts()
-  await countTeachers()
-  await countStudentsAndSections()
-  await countDepartments()
-  await countCourses()
-  await countSubjects()
-  await countRooms()
-  await fetchNotes()
+    isUnassignedSectionsFetching.value = true
+    isScheduleConflictsFetching.value = true
+    await fetchLatestTerm()
+    await schedulesNullCheck()
+    await countUnassignedSections()
+    isUnassignedSectionsFetching.value = false
+    await fetchSchedulesAndCheckConflicts()
+    isScheduleConflictsFetching.value = false
+    await countTeachers()
+    await countStudentsAndSections()
+    await countDepartments()
+    await countCourses()
+    await countSubjects()
+    await countRooms()
+    await fetchNotes()
 })
 //#endregion
 </script>
@@ -594,52 +688,59 @@ onMounted(async () => {
                                 <!-- UNASSIGNED SECTIONS -->
                                 <div
                                     id="unassigned-sections"
-                                    :class="['unassigned-sections', { 'has-unassigned': unassignedSectionCount > 0 }]"
+                                    :class="['unassigned-sections', { 'has-unassigned': unassignedSectionCount > 0}]"
                                     @click="goToPage('/main/class-scheduling')">
-                                    <div style="display: flex; flex-direction: row; justify-content: space-between;">
-                                        <p :style="{ color: unassignedSectionCount > 0 ? '#854D0E' : '#1A401C', fontWeight: 600 }">
-                                            UNASSIGNED SECTIONS
-                                        </p>
 
-                                        <!-- Check SVG -->
-                                        <svg v-show="unassignedSectionCount == 0" class="svg-icon" style="width: 23px; height: 23px;vertical-align: middle;fill: #1A401C;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M528.544303 46.535873c-247.186775 0-447.601294 200.38996-447.601294 447.601294 0 247.211335 200.415542 447.601294 447.601294 447.601294 247.194962 0 447.601294-200.38996 447.601294-447.601294C976.146621 246.924809 775.740288 46.535873 528.544303 46.535873M789.830191 372.900965 483.425709 670.0302c-5.210675 5.053086-11.95938 7.569396-18.690688 7.569396-6.880711 0-13.752212-2.622734-18.99768-7.867178L326.355371 550.349423c-10.500145-10.490935-10.500145-29.53364 0-40.024575 10.489912-10.490935 27.476795-12.537548 37.96773-2.046612l100.691283 100.676957 287.437501-278.719956c10.629081-10.29753 27.607778-8.024767 37.97387 2.641153C800.734542 343.523891 800.489972 362.566596 789.830191 372.900965"  /></svg>
-                                        
-                                        <!-- Caution SVG -->
-                                        <svg 
-                                            class="svg-icon"
-                                            v-show="unassignedSectionCount > 0" 
-                                            width="23" 
-                                            height="23" 
-                                            viewBox="0 0 24 24" 
-                                            fill="none" 
-                                            xmlns="http://www.w3.org/2000/svg"
+                                      <!-- Overlay for Gathering Data -->
+                                    <div v-if="isUnassignedSectionsFetching" class="overlay">
+                                        <span>Fetching Data...</span>
+                                    </div>
+                                    <div :class="['content', { 'blurred': isUnassignedSectionsFetching }]">
+                                        <div style="display: flex; flex-direction: row; justify-content: space-between;">
+                                            <p :style="{ color: unassignedSectionCount > 0 ? '#854D0E' : '#1A401C', fontWeight: 600 }">
+                                                UNASSIGNED SECTIONS
+                                            </p>
+
+                                            <!-- Check SVG -->
+                                            <svg v-show="unassignedSectionCount == 0" class="svg-icon" style="width: 23px; height: 23px;vertical-align: middle;fill: #1A401C;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M528.544303 46.535873c-247.186775 0-447.601294 200.38996-447.601294 447.601294 0 247.211335 200.415542 447.601294 447.601294 447.601294 247.194962 0 447.601294-200.38996 447.601294-447.601294C976.146621 246.924809 775.740288 46.535873 528.544303 46.535873M789.830191 372.900965 483.425709 670.0302c-5.210675 5.053086-11.95938 7.569396-18.690688 7.569396-6.880711 0-13.752212-2.622734-18.99768-7.867178L326.355371 550.349423c-10.500145-10.490935-10.500145-29.53364 0-40.024575 10.489912-10.490935 27.476795-12.537548 37.96773-2.046612l100.691283 100.676957 287.437501-278.719956c10.629081-10.29753 27.607778-8.024767 37.97387 2.641153C800.734542 343.523891 800.489972 362.566596 789.830191 372.900965"  /></svg>
+                                            
+                                            <!-- Caution SVG -->
+                                            <svg 
+                                                class="svg-icon"
+                                                v-show="unassignedSectionCount > 0" 
+                                                width="23" 
+                                                height="23" 
+                                                viewBox="0 0 24 24" 
+                                                fill="none" 
+                                                xmlns="http://www.w3.org/2000/svg"
+                                            >
+                                                <g clip-path="url(#clip0_408_455)">
+                                                    <path 
+                                                        d="M23.7299 20.0474C24.499 21.3597 23.5336 23 21.9975 23H2.00228C0.463236 23 -0.497681 21.3571 0.269902 20.0474L10.2677 2.98376C11.0371 1.67089 12.9643 1.67327 13.7324 2.98376L23.7299 20.0474ZM12 16.5195C10.9415 16.5195 10.0834 17.3642 10.0834 18.4062C10.0834 19.4483 10.9415 20.293 12 20.293C13.0586 20.293 13.9167 19.4483 13.9167 18.4062C13.9167 17.3642 13.0586 16.5195 12 16.5195ZM10.1803 9.73776L10.4894 15.3159C10.5039 15.5769 10.7231 15.7812 10.9887 15.7812H13.0114C13.2769 15.7812 13.4962 15.5769 13.5107 15.3159L13.8197 9.73776C13.8354 9.45582 13.6073 9.21875 13.3205 9.21875H10.6795C10.3927 9.21875 10.1647 9.45582 10.1803 9.73776Z" 
+                                                        :fill="unassignedSectionCount > 0 ? '#854D0E' : '#1A401C'"
+                                                    />
+                                                </g>
+                                                <defs>
+                                                    <clipPath id="clip0_408_455">
+                                                        <rect width="24" height="21" fill="white" transform="translate(0 2)"/>
+                                                    </clipPath>
+                                                </defs>
+                                            </svg>
+                                        </div>
+                                    
+                                        <div 
+                                            style="width: 100%; margin-bottom: 6px; border-bottom: 1px solid;"
+                                            :style="{ borderColor: unassignedSectionCount > 0 ? '#854D0E' : '#1A401C' }"
                                         >
-                                            <g clip-path="url(#clip0_408_455)">
-                                                <path 
-                                                    d="M23.7299 20.0474C24.499 21.3597 23.5336 23 21.9975 23H2.00228C0.463236 23 -0.497681 21.3571 0.269902 20.0474L10.2677 2.98376C11.0371 1.67089 12.9643 1.67327 13.7324 2.98376L23.7299 20.0474ZM12 16.5195C10.9415 16.5195 10.0834 17.3642 10.0834 18.4062C10.0834 19.4483 10.9415 20.293 12 20.293C13.0586 20.293 13.9167 19.4483 13.9167 18.4062C13.9167 17.3642 13.0586 16.5195 12 16.5195ZM10.1803 9.73776L10.4894 15.3159C10.5039 15.5769 10.7231 15.7812 10.9887 15.7812H13.0114C13.2769 15.7812 13.4962 15.5769 13.5107 15.3159L13.8197 9.73776C13.8354 9.45582 13.6073 9.21875 13.3205 9.21875H10.6795C10.3927 9.21875 10.1647 9.45582 10.1803 9.73776Z" 
-                                                    :fill="unassignedSectionCount > 0 ? '#854D0E' : '#1A401C'"
-                                                />
-                                            </g>
-                                            <defs>
-                                                <clipPath id="clip0_408_455">
-                                                    <rect width="24" height="21" fill="white" transform="translate(0 2)"/>
-                                                </clipPath>
-                                            </defs>
-                                        </svg>
-                                    </div>
+                                            <h2 :style="{ color: unassignedSectionCount > 0 ? '#854D0E' : '#1A401C', margin: '16px 0' }">
+                                                {{ unassignedSectionCount }}
+                                            </h2>
+                                        </div>
 
-                                    <div 
-                                        style="width: 100%; margin-bottom: 6px; border-bottom: 1px solid;"
-                                        :style="{ borderColor: unassignedSectionCount > 0 ? '#854D0E' : '#1A401C' }"
-                                    >
-                                        <h2 :style="{ color: unassignedSectionCount > 0 ? '#854D0E' : '#1A401C', margin: '16px 0' }">
-                                            {{ unassignedSectionCount }}
-                                        </h2>
+                                        <small :style="{ color: unassignedSectionCount > 0 ? '#854D0E' : '#1A401C' }">
+                                            {{ unassignedSectionCount > 0 ? 'Assign sections now.' : 'All sections are assigned.' }}
+                                        </small>
                                     </div>
-
-                                    <small :style="{ color: unassignedSectionCount > 0 ? '#854D0E' : '#1A401C' }">
-                                        {{ unassignedSectionCount > 0 ? 'Assign sections now.' : 'All sections are assigned.' }}
-                                    </small>
                                 </div>
 
                                 <!-- SCHEDULE CONFLICTS -->
@@ -647,42 +748,52 @@ onMounted(async () => {
                                     class="schedule-conflicts"
                                     :class="['schedule-conflicts', { 'has-conflict': conflictCount > 0 }]"
                                 >
-                                    <div style="display: flex; flex-direction: row; justify-content: space-between;">
-                                    <p :style="{ color: conflictCount > 0 ? '#991B1B' : '#1A401C', fontWeight: 600 }">
-                                        SCHEDULE CONFLICTS
-                                    </p>
-
-                                    <!-- Check SVG -->
-                                    <svg v-show="conflictCount == 0" class="svg-icon" style="width: 23px; height: 23px;vertical-align: middle;fill: #1A401C;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M528.544303 46.535873c-247.186775 0-447.601294 200.38996-447.601294 447.601294 0 247.211335 200.415542 447.601294 447.601294 447.601294 247.194962 0 447.601294-200.38996 447.601294-447.601294C976.146621 246.924809 775.740288 46.535873 528.544303 46.535873M789.830191 372.900965 483.425709 670.0302c-5.210675 5.053086-11.95938 7.569396-18.690688 7.569396-6.880711 0-13.752212-2.622734-18.99768-7.867178L326.355371 550.349423c-10.500145-10.490935-10.500145-29.53364 0-40.024575 10.489912-10.490935 27.476795-12.537548 37.96773-2.046612l100.691283 100.676957 287.437501-278.719956c10.629081-10.29753 27.607778-8.024767 37.97387 2.641153C800.734542 343.523891 800.489972 362.566596 789.830191 372.900965"  /></svg>
-
-                                    <!-- Caution SVG -->
-                                    <svg v-show="conflictCount > 0" class="svg-icon" width="23" height="23" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                        <g clip-path="url(#clip0_408_455)">
-                                            <path
-                                                d="M23.7299 20.0474C24.499 21.3597 23.5336 23 21.9975 23H2.00228C0.463236 23 -0.497681 21.3571 0.269902 20.0474L10.2677 2.98376C11.0371 1.67089 12.9643 1.67327 13.7324 2.98376L23.7299 20.0474ZM12 16.5195C10.9415 16.5195 10.0834 17.3642 10.0834 18.4062C10.0834 19.4483 10.9415 20.293 12 20.293C13.0586 20.293 13.9167 19.4483 13.9167 18.4062C13.9167 17.3642 13.0586 16.5195 12 16.5195ZM10.1803 9.73776L10.4894 15.3159C10.5039 15.5769 10.7231 15.7812 10.9887 15.7812H13.0114C13.2769 15.7812 13.4962 15.5769 13.5107 15.3159L13.8197 9.73776C13.8354 9.45582 13.6073 9.21875 13.3205 9.21875H10.6795C10.3927 9.21875 10.1647 9.45582 10.1803 9.73776Z"
-                                                fill="#991B1B"
-                                            />
-                                        </g>
-                                        <defs>
-                                        <clipPath id="clip0_408_455">
-                                            <rect width="24" height="21" fill="white" transform="translate(0 2)" />
-                                        </clipPath>
-                                        </defs>
-                                    </svg>
-
+                                    <!-- Overlay for blurring -->
+                                    <div v-if="isScheduleConflictsFetching" class="overlay">
+                                        <span>Gathering Data...</span>
                                     </div>
 
-                                    <div style="width: 100%; margin-bottom: 6px; border-bottom: 1px solid;"
-                                        :style="{ borderColor: conflictCount > 0 ? '#991B1B' : '#1A401C' }">
-                                    <h2 :style="{ color: conflictCount > 0 ? '#991B1B' : '#1A401C', margin: '16px 0' }">
-                                        {{ conflictCount }}
-                                    </h2>
-                                    </div>
+                                    <div :class="['content', { 'blurred': isScheduleConflictsFetching }]">
+                                        <div style="display: flex; flex-direction: row; justify-content: space-between;">
+                                            <p :style="{ color: conflictCount > 0 ? '#991B1B' : '#1A401C', fontWeight: 600 }">
+                                                SCHEDULE CONFLICTS
+                                            </p>
 
-                                    <small :style="{ color: conflictCount > 0 ? '#991B1B' : '#1A401C' }">
-                                    {{ conflictCount > 0 ? 'Conflicts detected.' : 'There are no problems here.' }}
-                                    </small>
+
+                                            <!-- Check SVG -->
+                                            <svg v-show="conflictCount == 0" class="svg-icon" style="width: 23px; height: 23px;vertical-align: middle;fill: #1A401C;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M528.544303 46.535873c-247.186775 0-447.601294 200.38996-447.601294 447.601294 0 247.211335 200.415542 447.601294 447.601294 447.601294 247.194962 0 447.601294-200.38996 447.601294-447.601294C976.146621 246.924809 775.740288 46.535873 528.544303 46.535873M789.830191 372.900965 483.425709 670.0302c-5.210675 5.053086-11.95938 7.569396-18.690688 7.569396-6.880711 0-13.752212-2.622734-18.99768-7.867178L326.355371 550.349423c-10.500145-10.490935-10.500145-29.53364 0-40.024575 10.489912-10.490935 27.476795-12.537548 37.96773-2.046612l100.691283 100.676957 287.437501-278.719956c10.629081-10.29753 27.607778-8.024767 37.97387 2.641153C800.734542 343.523891 800.489972 362.566596 789.830191 372.900965"  /></svg>
+
+                                            <!-- Caution SVG -->
+                                            <svg v-show="conflictCount > 0" class="svg-icon" width="23" height="23" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <g clip-path="url(#clip0_408_455)">
+                                                    <path
+                                                        d="M23.7299 20.0474C24.499 21.3597 23.5336 23 21.9975 23H2.00228C0.463236 23 -0.497681 21.3571 0.269902 20.0474L10.2677 2.98376C11.0371 1.67089 12.9643 1.67327 13.7324 2.98376L23.7299 20.0474ZM12 16.5195C10.9415 16.5195 10.0834 17.3642 10.0834 18.4062C10.0834 19.4483 10.9415 20.293 12 20.293C13.0586 20.293 13.9167 19.4483 13.9167 18.4062C13.9167 17.3642 13.0586 16.5195 12 16.5195ZM10.1803 9.73776L10.4894 15.3159C10.5039 15.5769 10.7231 15.7812 10.9887 15.7812H13.0114C13.2769 15.7812 13.4962 15.5769 13.5107 15.3159L13.8197 9.73776C13.8354 9.45582 13.6073 9.21875 13.3205 9.21875H10.6795C10.3927 9.21875 10.1647 9.45582 10.1803 9.73776Z"
+                                                        fill="#991B1B"
+                                                    />
+                                                </g>
+                                                <defs>
+                                                <clipPath id="clip0_408_455">
+                                                    <rect width="24" height="21" fill="white" transform="translate(0 2)" />
+                                                </clipPath>
+                                                </defs>
+                                            </svg>
+                                        </div>
+
+                                        <div style="width: 100%; margin-bottom: 6px; border-bottom: 1px solid;"
+                                            :style="{ borderColor: conflictCount > 0 ? '#991B1B' : '#1A401C' }">
+                                            <h2 :style="{ color: conflictCount > 0 ? '#991B1B' : '#1A401C', margin: '16px 0' }">
+                                                {{ conflictCount }}
+                                            </h2>
+                                        </div>
+
+                                        <small :style="{ color: conflictCount > 0 ? '#991B1B' : '#1A401C' }">
+                                            {{ conflictCount > 0 ? 'Conflicts detected.' : 'There are no problems here.' }}
+                                        </small>
+                                    </div>
                                 </div>
+
+
+                        
                             </div>
 
                             <!-- Today's Schedule -->
@@ -1053,6 +1164,7 @@ onMounted(async () => {
 
 
     .unassigned-sections {
+        position: relative; /* important for overlay */
         flex: 1;
         width: clamp(250px, 15vw, 15vw);
         min-width: 250px;
@@ -1078,8 +1190,31 @@ onMounted(async () => {
         border: 1px solid #854D0E;
     }
 
+    .content.blurred {
+        position: relative;
+        filter: blur(3px);
+        pointer-events: none; /* prevent clicks */
+    }
+
+    .unassigned-sections .overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(235, 235, 235, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 1rem;
+        z-index: 10;
+        border-radius: 8px;
+        pointer-events: none; /* allow clicks to pass through? Remove if needed */
+    }
 
     .schedule-conflicts {
+        position: relative;
         flex: 1;
         width: clamp(250px, 15vw, 15vw);
         min-width: 250px;
@@ -1102,6 +1237,28 @@ onMounted(async () => {
 
     .schedule-conflicts.has-conflict:hover {
         border: 1px solid #991B1B;
+    }
+
+    .schedule-conflicts .content.blurred {
+        filter: blur(3px);
+        pointer-events: none; /* prevent clicks while blurred */
+    }
+
+    .schedule-conflicts .overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(235, 235, 235, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        font-size: 1rem;
+        z-index: 10;
+        border-radius: 8px;
+        pointer-events: none;
     }
 
     /* Calendar */
