@@ -1026,7 +1026,7 @@ onMounted(async () => {
                                 <div v-else v-for="(note, index) in notes"
                                     :key="note.note_id"
                                     style="display: flex; flex-direction: row; align-items: flex-start; gap: 12px;">
-                                    <svg class="svg-icon" style="width: 8px; height: 8px; fill: currentColor; overflow: hidden; flex-shrink: 0; margin-top: 6px;" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                                    <svg class="svg-icon" style="width: 7px; height: 7px; fill: currentColor; overflow: hidden; flex-shrink: 0; margin-top: 7px;" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
                                         <path d="M512.006827 3.413333C792.855893 3.413333 1020.586667 231.10656 1020.586667 511.993173 1020.586667 792.8832 792.855893 1020.586667 512.006827 1020.586667S3.413333 792.85248 3.413333 511.993173 231.120213 3.413333 512.006827 3.413333z" />
                                     </svg>
                                     <p class="update-note" @click="toggleNoteModal('update', index)">{{ note.note }}</p>
@@ -1384,6 +1384,7 @@ onMounted(async () => {
     .update-note {
         width: 100%;
         transition: ease-in-out 0.1s;
+        cursor: pointer;
     }
 
     .update-note:hover {
