@@ -792,8 +792,6 @@ onMounted(async () => {
                                     </div>
                                 </div>
 
-
-                        
                             </div>
 
                             <!-- Today's Schedule -->
@@ -841,6 +839,7 @@ onMounted(async () => {
                                 </div>
                             </div>
 
+                            <!-- Total Overview -->
                             <div style="display: flex; flex-direction: column; width: 320px; padding: 20px 26px; background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); gap: 12px;">
                                 <p style="font-size: 20px; margin-bottom: 10px;" class="paragraph--black-bold">Total Overview</p>
                                 
@@ -1006,8 +1005,8 @@ onMounted(async () => {
 
                     <!-- notes -->
                     <transition name="fade-up" appear>
-                        <div v-show="visible[1]" style="display: flex; flex-direction: column; padding: 25px; background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); gap: 12px;">
-                            <div style="display: flex; flex-direction: row; padding-bottom: 4px;">
+                        <div v-show="visible[1]" style="display: flex; flex-direction: column; padding: 25px 16px; background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); gap: 12px;">
+                            <div style="display: flex; flex-direction: row; padding-bottom: 4px; padding: 0px 9px;">
                                 <p style="font-size: 20px;" class="paragraph--black-bold">Notes</p>
                                 <div class="add-note" @click="toggleNoteModal('add')">
                                     <svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1017,7 +1016,7 @@ onMounted(async () => {
                             </div>
                             
                             <!-- content -->
-                            <div style="display: flex; flex-direction: column; gap: 12px; max-height: 250px; padding-bottom: 4px; overflow-y: auto; ">
+                            <div class="notes-container">
                                 <!-- ✅ Show this message when there are no notes -->
                                 <div v-if="notes.length === 0" style="text-align: center; color: #7F8D9C; font-style: italic;">
                                     Add new note
@@ -1025,12 +1024,13 @@ onMounted(async () => {
 
                                 <div v-else v-for="(note, index) in notes"
                                     :key="note.note_id"
-                                    style="display: flex; flex-direction: row; align-items: flex-start; gap: 12px;">
+                                    class="note-item"
+                                    >
                                     <svg class="svg-icon" style="width: 7px; height: 7px; fill: currentColor; overflow: hidden; flex-shrink: 0; margin-top: 7px;" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
                                         <path d="M512.006827 3.413333C792.855893 3.413333 1020.586667 231.10656 1020.586667 511.993173 1020.586667 792.8832 792.855893 1020.586667 512.006827 1020.586667S3.413333 792.85248 3.413333 511.993173 231.120213 3.413333 512.006827 3.413333z" />
                                     </svg>
                                     <p class="update-note" @click="toggleNoteModal('update', index)">{{ note.note }}</p>
-                                    <div style="display: flex; flex-direction: row; gap: 4px; align-items: center; margin-left: auto; margin-right: 10px;">
+                                    <div class="note-actions">
                                         <svg class="pin-icon" @click="togglePin(index)" style="width: 18px; height: 18px;vertical-align: middle;fill: currentColor;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M682.666667 512V170.666667h42.666666V85.333333H298.666667v85.333334h42.666666v341.333333l-85.333333 85.333333v85.333334h221.866667v256h68.266666v-256H768v-85.333334l-85.333333-85.333333z" :fill="note.pinned ? 'var(--color-primary)' : '#7F8D9C'"/></svg>
                                         <svg class="delete-icon" @click="deleteNote(index)" width="16" height="16" viewBox="0 0 30 32" fill="none" xmlns="http://www.w3.org/2000/svg">
                                             <path d="M11.1427 25.6427V11.4999C11.1427 11.313 11.0827 11.1587 10.9627 11.037C10.8427 10.9153 10.6884 10.8553 10.4998 10.857H9.21411C9.02726 10.857 8.87297 10.917 8.75126 11.037C8.62954 11.157 8.56954 11.3113 8.57126 11.4999V25.6427C8.57126 25.8296 8.63126 25.9839 8.75126 26.1056C8.87126 26.2273 9.02554 26.2873 9.21411 26.2856H10.4998C10.6867 26.2856 10.841 26.2256 10.9627 26.1056C11.0844 25.9856 11.1444 25.8313 11.1427 25.6427ZM16.2855 25.6427V11.4999C16.2855 11.313 16.2255 11.1587 16.1055 11.037C15.9855 10.9153 15.8313 10.8553 15.6427 10.857H14.357C14.1701 10.857 14.0158 10.917 13.8941 11.037C13.7724 11.157 13.7124 11.3113 13.7141 11.4999V25.6427C13.7141 25.8296 13.7741 25.9839 13.8941 26.1056C14.0141 26.2273 14.1684 26.2873 14.357 26.2856H15.6427C15.8295 26.2856 15.9838 26.2256 16.1055 26.1056C16.2273 25.9856 16.2873 25.8313 16.2855 25.6427ZM21.4284 25.6427V11.4999C21.4284 11.313 21.3684 11.1587 21.2484 11.037C21.1284 10.9153 20.9741 10.8553 20.7855 10.857H19.4998C19.313 10.857 19.1587 10.917 19.037 11.037C18.9153 11.157 18.8553 11.3113 18.857 11.4999V25.6427C18.857 25.8296 18.917 25.9839 19.037 26.1056C19.157 26.2273 19.3113 26.2873 19.4998 26.2856H20.7855C20.9724 26.2856 21.1267 26.2256 21.2484 26.1056C21.3701 25.9856 21.4301 25.8313 21.4284 25.6427ZM10.4998 5.71415H19.4998L18.5355 3.36386C18.4413 3.24386 18.3273 3.17015 18.1935 3.14272H11.8241C11.6904 3.17015 11.5764 3.24386 11.4821 3.36386L10.4998 5.71415ZM29.1427 6.357V7.64272C29.1427 7.82957 29.0827 7.98386 28.9627 8.10557C28.8427 8.22729 28.6884 8.28729 28.4998 8.28558H26.5713V27.3296C26.5713 28.4404 26.2567 29.4013 25.6275 30.2121C24.9984 31.023 24.2415 31.4284 23.357 31.4284H6.64268C5.75811 31.4284 5.00125 31.0367 4.37211 30.2533C3.74297 29.4699 3.4284 28.5227 3.4284 27.4119V8.28558H1.49983C1.31297 8.28558 1.15868 8.22557 1.03697 8.10557C0.915255 7.98557 0.855255 7.83129 0.856969 7.64272V6.357C0.856969 6.17015 0.916969 6.01586 1.03697 5.89415C1.15697 5.77243 1.31126 5.71243 1.49983 5.71415H7.70725L9.11383 2.35843C9.3144 1.863 9.67611 1.44129 10.199 1.09329C10.7218 0.745289 11.2507 0.571289 11.7855 0.571289H18.2141C18.749 0.571289 19.2778 0.745289 19.8007 1.09329C20.3235 1.44129 20.6853 1.863 20.8858 2.35843L22.2924 5.71415H28.4998C28.6867 5.71415 28.841 5.77415 28.9627 5.89415C29.0844 6.01415 29.1444 6.16843 29.1427 6.357Z" fill="#7F8D9C"/>
@@ -1381,14 +1381,52 @@ onMounted(async () => {
         scale: 0.85;
     }
 
-    .update-note {
+    .notes-container {
+        display: flex; 
+        flex-direction: column;
+        gap: 12px;
+        max-height: 250px;  
+        padding-bottom: 4px; 
+        overflow-y: auto; 
+        overflow-x: hidden;
+        padding: 0px 9px;
+    }
+
+    .note-item {
+        display: flex;
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 8px;
         width: 100%;
-        transition: ease-in-out 0.1s;
+    }
+
+    .update-note {
+        flex: 1;
+        word-break: break-all;
+        overflow-wrap: anywhere;
+        white-space: normal;
+        margin-right: 4px;
+        transition: color 0.1s ease-in-out;
         cursor: pointer;
+
+        /* ✅ Ellipsis after 3 lines */
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .update-note:hover {
         color: var(--color-primary);
+    }
+
+    .note-actions {
+        display: flex;
+        flex-direction: row;
+        gap: 4px;
+        align-items: center;
+        flex-shrink: 0;
     }
 
     .delete-icon, .pin-icon {

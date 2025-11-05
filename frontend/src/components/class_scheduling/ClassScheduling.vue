@@ -596,10 +596,10 @@ watch(
                     <!-- Group by course name -->
                     <div v-for="course in [...new Set(group.map(sec => sec.course_name))]">
                         <div style="display: grid; grid-template-columns: 50% 50%; padding-left: 24px; margin-bottom: 8px;">
-                            <label class="paragraph--gray" style="font-weight: 600;">{{ course }}</label> 
+                            <label class="paragraph--gray" style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ course }}</label> 
                             <div style="display: grid; grid-template-columns: repeat(2, 1fr); text-align: center;">
-                                <label class="paragraph--gray" style="font-weight: 600;">Class No.</label>
-                                <label class="paragraph--gray" style="font-weight: 600;">Status</label>
+                                <label class="paragraph--gray" style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Class No.</label>
+                                <label class="paragraph--gray" style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Status</label>
                             </div>
                         </div>
 

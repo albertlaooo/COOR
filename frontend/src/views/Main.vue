@@ -253,7 +253,7 @@ watch(confirmNewPassword, (newVal) => {
         </defs>
       </svg>
 
-        <label style="font-weight: 400;" v-show="!sidebarCollapsed">{{ tab.name }}</label>
+        <label style="font-weight: 400; white-space: nowrap;" v-show="!sidebarCollapsed">{{ tab.name }}</label>
       </router-link>
 
       <div class="divider" style="margin-right: 15px; margin-top: auto;" :style="{ marginLeft: !sidebarCollapsed ? '0px' : '15px' }"></div>
@@ -430,6 +430,7 @@ watch(confirmNewPassword, (newVal) => {
 
 /* Navbar */
 .navbar {
+  position: relative;
   display: flex;
   height: 45px;
   justify-content: space-between;
@@ -499,6 +500,8 @@ watch(confirmNewPassword, (newVal) => {
 /* Sidebar */
 .sidebar {
   position: relative;
+  flex-shrink: 0;
+  flex-grow: 0;
   width: 220px;
   background-color: white;
   padding-top: 15px;
@@ -511,6 +514,7 @@ watch(confirmNewPassword, (newVal) => {
   border-right: 1px solid rgba(0, 0, 0, 0.2);
   border-radius: 18px;
   user-select: none;
+  z-index: 1;
 }
 
 #sidebar-btn {
