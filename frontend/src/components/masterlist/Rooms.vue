@@ -408,12 +408,10 @@
                 <!-- Sort -->
                 <select v-model="sortValue" style="padding: 6px; padding-left: 15px; width: auto;">
                     <option value="">Sort by</option>
-                    <option value="code-asc">Room Code (Ascending)</option>
-                    <option value="code-desc">Room Code (Descending)</option>
+                    <option value="code-asc">Room Code (A-Z)</option>
+                    <option value="code-desc">Room Code (Z–A)</option>
                     <option value="type-asc">Room Type (A–Z)</option>
                     <option value="type-desc">Room Type (Z–A)</option>
-                    <option value="capacity-asc">Capacity (Lowest–Highest)</option>
-                    <option value="capacity-desc">Capacity (Highest–Lowest)</option>
                 </select>
 
                 <svg @click="toggleRoomModal('add')" style="margin-left: auto;" width="32" height="32" viewBox="0 0 33 32" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -426,9 +424,9 @@
             <table>
                 <thead>
                     <tr>
-                        <th>Room Code</th>
-                        <th>Room Type</th>
-                        <th style="width: 130px">Actions</th>
+                        <th style="width: 40%">Room Code</th>
+                        <th style="width: 40%">Room Type</th>
+                        <th style="width: 20%">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -540,8 +538,7 @@
         display: flex;
         flex-direction: column;
         width: auto;
-        min-width: 700px;
-        max-width: 920px;
+        width: 780px;
     }
 
     #masterdata-nav {
@@ -587,6 +584,7 @@
         border-radius: 8px;
         overflow: hidden;
         box-shadow: 0 0 5px rgba(0,0,0,0.2);
+        table-layout: fixed;
     }
     th, td {
         padding: 10px;
@@ -599,7 +597,10 @@
         color: white;
     }
     td {
-        border-bottom: 1px solid #333; 
+        border-bottom: 1px solid #333;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .modal-content {

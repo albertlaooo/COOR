@@ -13,22 +13,61 @@ const signinBtnText = ref('Sign In')
 const loginStatus = ref('')
 const showPassword = ref(false)
 
-// Goes to Home if its remembered.
+const attempts = ref(0)
+const maxAttempts = 3
+const cooldown = ref(0)
+let cooldownInterval = null
+
+// --- Restore cooldown if active ---
 onMounted(() => {
   const loggedIn = localStorage.getItem('loggedIn') === 'true'
   const rememberMeStored = localStorage.getItem('rememberMe') === 'true'
 
-  if (loggedIn == true) {
-    router.push('/main/home') // go directly to home tab
-  }
-  else if (rememberMeStored) {
+  if (loggedIn) {
+    router.push('/main/home')
+  } else if (rememberMeStored) {
     rememberMe.value = true
     username.value = localStorage.getItem('username')
     password.value = localStorage.getItem('password')
   }
+
+  // Check for saved cooldown timestamp
+  const savedCooldownEnd = localStorage.getItem('cooldownEnd')
+  const now = Date.now()
+  if (savedCooldownEnd && now < Number(savedCooldownEnd)) {
+    const remaining = Math.ceil((Number(savedCooldownEnd) - now) / 1000)
+    startCooldown(remaining)
+  }
 })
 
+const startCooldown = (seconds = 30) => {
+  cooldown.value = seconds
+  const endTime = Date.now() + seconds * 1000
+  localStorage.setItem('cooldownEnd', endTime.toString())
+
+  signinBtnText.value = `Try again in ${cooldown.value}s`
+  isLoggingIn.value = true
+
+  cooldownInterval = setInterval(() => {
+    cooldown.value--
+    signinBtnText.value = `Try again in ${cooldown.value}s`
+    loginStatus.value = `Too many wrong attempts. Please wait ${cooldown.value} seconds.`
+
+    if (cooldown.value <= 0) {
+      clearInterval(cooldownInterval)
+      localStorage.removeItem('cooldownEnd')
+      isLoggingIn.value = false
+      signinBtnText.value = 'Sign In'
+      attempts.value = 0
+      loginStatus.value = ''
+    }
+  }, 1000)
+}
+
 const signinBtn = async () => {
+  // prevent login during cooldown
+  if (cooldown.value > 0) return
+
   isLoggingIn.value = true
   signinBtnText.value = 'Logging In...'
   loginStatus.value = ''
@@ -44,43 +83,45 @@ const signinBtn = async () => {
         signinBtnText.value = 'Log in successfully.'
 
         // Save login
-        localStorage.setItem('loggedIn', 'true');
+        localStorage.setItem('loggedIn', 'true')
 
-        // Save credentials if "Remember Me" is checked
         if (rememberMe.value) {
-          localStorage.setItem('rememberMe', 'true');
+          localStorage.setItem('rememberMe', 'true')
           localStorage.setItem('username', username.value)
           localStorage.setItem('password', password.value)
         } else {
-          localStorage.setItem('rememberMe', 'false');
-          localStorage.setItem('password', '')
+          localStorage.setItem('rememberMe', 'false')
+          localStorage.setItem('username', '')
           localStorage.setItem('password', '')
         }
 
-        // Simulate network delay
         setTimeout(() => {
           router.push('/main/home')
           isLoggingIn.value = false
           signinBtnText.value = 'Sign In'
         }, 1000)
-        
-      } else {
-        loginStatus.value = "Wrong email or password.";
 
-        isLoggingIn.value = false
-        signinBtnText.value = 'Sign In'
+      } else {
+        attempts.value++
+        loginStatus.value = `Wrong email or password. ${maxAttempts - attempts.value} attempt${maxAttempts - attempts.value > 1 ? 's' : ''} remaining.`
+
+        if (attempts.value >= maxAttempts) {
+          loginStatus.value = `Too many wrong attempts. Please wait 30 seconds.`
+          startCooldown()
+        } else {
+          isLoggingIn.value = false
+          signinBtnText.value = 'Sign In'
+        }
       }
     }, 1000)
-
-    } catch (err) {
-        loginStatus.value = "⚠️ Server error.";
-        console.error(err);
-        isLoggingIn.value = false
-        signinBtnText.value = 'Sign In'
-      }
-};
+  } catch (err) {
+    loginStatus.value = "⚠️ Server error."
+    console.error(err)
+    isLoggingIn.value = false
+    signinBtnText.value = 'Sign In'
+  }
+}
 </script>
-
 
 <template>
   <div id="container">

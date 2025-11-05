@@ -36,9 +36,13 @@
 
     // ↕️ Sort options
     if (sortValue.value === "name-asc") {
-        result.sort((a, b) => a.subject_name.localeCompare(b.subject_name)) // ✅ fixed here
+        result.sort((a, b) => a.subject_name.localeCompare(b.subject_name))
     } else if (sortValue.value === "name-desc") {
-        result.sort((a, b) => b.subject_name.localeCompare(a.subject_name)) // ✅ fixed here
+        result.sort((a, b) => b.subject_name.localeCompare(a.subject_name))
+    } else if (sortValue.value === "subject-code-asc") {
+        result.sort((a, b) => a.subject_code.localeCompare(b.subject_code))
+    } else if (sortValue.value === "subject-code-desc") {
+        result.sort((a, b) => b.subject_code.localeCompare(a.subject_code))
     } else if (sortValue.value === "units-asc") {
         result.sort((a, b) => Number(a.units) - Number(b.units))
     } else if (sortValue.value === "units-desc") {
@@ -401,9 +405,10 @@
                 <!-- Sort -->
                 <select v-model="sortValue" style="padding: 6px; padding-left: 15px;">
                     <option value="">Sort by</option>
-                    <option value="code-asc">Code ↑</option>
-                    <option value="name-asc">Name A–Z</option>
-                    <option value="name-desc">Name Z–A</option>
+                    <option value="subject-code-asc">Subject Code (A–Z)</option>
+                    <option value="subject-code-desc">Subject Code (Z–A)</option>
+                    <option value="name-asc">Name (A–Z)</option>
+                    <option value="name-desc">Name (Z–A)</option>
                     <option value="units-asc">Units ↑</option>
                     <option value="units-desc">Units ↓</option>
                     <option value="room-lec-first">Room: Lec → Lab</option>
@@ -416,12 +421,12 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Subject Code</th>
-                            <th>Subject Name</th>
-                            <th>Units</th>
-                            <th>Hours/Week</th>
-                            <th>Room Type</th>
-                            <th style="width: 130px">Actions</th>
+                            <th style="width: 15%;">Subject Code</th>
+                            <th style="width: 30%;">Subject Name</th>
+                            <th style="width: 11%;">Units</th>
+                            <th style="width: 16%;">Hours/Week</th>
+                            <th style="width: 16%;">Room Type</th>
+                            <th style="width: 11%;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -599,6 +604,7 @@
         border-radius: 8px;
         overflow: hidden;
         box-shadow: 0 0 5px rgba(0,0,0,0.2);
+        table-layout: fixed;
     }
     th, td {
         padding: 10px;
@@ -612,6 +618,9 @@
     }
     td {
         border-bottom: 1px solid #333; 
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .modal-content {
