@@ -18,7 +18,9 @@ const passwordConfirmation = ref("")
 const selectedGroupKey = ref("")
 
 const searchQueryActive = ref('')
+const sortOption = ref("latest")
 const searchQueryArchived = ref('')
+const sortOptionArchived = ref("latest")
 
 const activeTab = ref("active") // default active
 const moveUpConfirmation = ref("note") // default note
@@ -36,12 +38,53 @@ const fetchSections = async () => {
     }
 }
 
+// 🔍 Filter sections by search query
+const filteredSections = computed(() => {
+    if (!searchQueryActive.value.trim()) return sections.value
+
+    const query = searchQueryActive.value.toLowerCase()
+
+    return sections.value.filter(sec => 
+        sec.section_format?.toLowerCase().includes(query) ||
+        sec.course_name?.toLowerCase().includes(query) ||
+        sec.academic_year?.toLowerCase().includes(query)
+    )
+})
+
+// 🔽 Sort filtered sections based on user choice
+const sortedSections = computed(() => {
+    const sorted = [...filteredSections.value]
+
+    switch (sortOption.value) {
+        case "latest":
+            sorted.sort((a, b) => b.section_id - a.section_id)
+            break
+        case "oldest":
+            sorted.sort((a, b) => a.section_id - b.section_id)
+            break
+        case "az":
+            sorted.sort((a, b) => a.course_name.localeCompare(b.course_name))
+            break
+        case "za":
+            sorted.sort((a, b) => b.course_name.localeCompare(a.course_name))
+            break
+        case "most":
+            sorted.sort((a, b) => b.student_count - a.student_count)
+            break
+        case "fewest":
+            sorted.sort((a, b) => a.student_count - b.student_count)
+            break
+    }
+
+    return sorted
+})
+
 // Group sections by "A.Y. YEAR – Semester" (latest first)
 const groupedSections = computed(() => {
     const groups = {}
     const semesterMap = { 1: "1st Semester", 2: "2nd Semester" }
 
-    sections.value.forEach(sec => {
+    sortedSections.value.forEach(sec => {
         const semesterText = semesterMap[sec.semester] || sec.semester
         const key = `A.Y. ${sec.academic_year} – ${semesterText}`
 
@@ -51,18 +94,19 @@ const groupedSections = computed(() => {
 
     // Sort keys in reverse order (latest A.Y. first, 2nd semester before 1st)
     const sortedKeys = Object.keys(groups).sort((a, b) => {
-        const [aYear, aSem] = a.match(/A\.Y\. (\d{4})-(\d{4}) – (.*)/).slice(1)
-        const [bYear, bSem] = b.match(/A\.Y\. (\d{4})-(\d{4}) – (.*)/).slice(1)
+        const [aStart] = a.match(/A\.Y\. (\d{4})/) || []
+        const [bStart] = b.match(/A\.Y\. (\d{4})/) || []
+        const aYear = parseInt(aStart?.replace(/[^\d]/g, "")) || 0
+        const bYear = parseInt(bStart?.replace(/[^\d]/g, "")) || 0
 
-        // Compare start years (descending)
         if (bYear !== aYear) return bYear - aYear
 
-        // Then compare semesters (2nd before 1st)
         const semOrder = { "1st Semester": 1, "2nd Semester": 2 }
+        const aSem = a.includes("2nd") ? "2nd Semester" : "1st Semester"
+        const bSem = b.includes("2nd") ? "2nd Semester" : "1st Semester"
         return semOrder[bSem] - semOrder[aSem]
     })
 
-    // Rebuild the object in sorted order
     const sortedGroups = {}
     sortedKeys.forEach(key => {
         sortedGroups[key] = groups[key]
@@ -84,12 +128,48 @@ const fetchArchivedSections = async () => {
     }
 }
 
-// Group archived sections by "A.Y. YEAR – Semester" (latest first)
+// 🔍 Filter archived sections by search query
+const filteredArchivedSections = computed(() => {
+    if (!searchQueryArchived.value.trim()) {
+        return archivedSections.value
+    }
+
+    const query = searchQueryArchived.value.toLowerCase()
+
+    return archivedSections.value.filter(sec => 
+        sec.section_format?.toLowerCase().includes(query) ||
+        sec.course_name?.toLowerCase().includes(query) ||
+        sec.academic_year?.toLowerCase().includes(query)
+    )
+})
+
+// 🧩 Sort archived sections
+const sortedArchivedSections = computed(() => {
+    const sections = [...filteredArchivedSections.value]
+    switch (sortOptionArchived.value) {
+        case "latest":
+            return sections.sort((a, b) => b.section_id - a.section_id)
+        case "oldest":
+            return sections.sort((a, b) => a.section_id - b.section_id)
+        case "az":
+            return sections.sort((a, b) => a.course_name.localeCompare(b.course_name))
+        case "za":
+            return sections.sort((a, b) => b.course_name.localeCompare(a.course_name))
+        case "most":
+            return sections.sort((a, b) => b.student_count - a.student_count)
+        case "fewest":
+            return sections.sort((a, b) => a.student_count - b.student_count)
+        default:
+            return sections
+    }
+})
+
+// Group archived sections by "A.Y. YEAR – Semester"
 const groupedArchivedSections = computed(() => {
     const groups = {}
     const semesterMap = { 1: "1st Semester", 2: "2nd Semester" }
 
-    archivedSections.value.forEach(sec => {
+    sortedArchivedSections.value.forEach(sec => {
         const semesterText = semesterMap[sec.semester] || sec.semester
         const key = `A.Y. ${sec.academic_year} – ${semesterText}`
 
@@ -97,7 +177,7 @@ const groupedArchivedSections = computed(() => {
         groups[key].push(sec)
     })
 
-    // Sort keys in reverse order (latest year and semester first)
+    // Sort groups by latest academic year and semester
     const sortedKeys = Object.keys(groups).sort((a, b) => {
         const [aStart, aEnd, aSem] = a.match(/A\.Y\. (\d{4})-(\d{4}) – (.*)/).slice(1)
         const [bStart, bEnd, bSem] = b.match(/A\.Y\. (\d{4})-(\d{4}) – (.*)/).slice(1)
@@ -110,7 +190,6 @@ const groupedArchivedSections = computed(() => {
         return semOrder[bSem] - semOrder[aSem]
     })
 
-    // Rebuild sorted object
     const sortedGroups = {}
     sortedKeys.forEach(key => {
         sortedGroups[key] = groups[key]
@@ -118,6 +197,7 @@ const groupedArchivedSections = computed(() => {
 
     return sortedGroups
 })
+
 //#endregion
 
 //#region 📚 FETCH COURSES
@@ -752,8 +832,16 @@ async function confirmDelete() {
                     </div>
 
                     <!-- Sort -->
-                    <select style="margin-left: 0px; padding: 6px; padding-left: 15px;">
-                        <option value="">Sort by</option>
+                    <select 
+                        v-model="sortOption" 
+                        style="margin-left: 0px; padding: 6px; padding-left: 15px;"
+                    >
+                        <option value="latest">Latest</option>
+                        <option value="oldest">Oldest</option>
+                        <option value="az">Course Name (A–Z)</option>
+                        <option value="za">Course Name (Z–A)</option>
+                        <option value="most">Most Students</option>
+                        <option value="fewest">Fewest Students</option>
                     </select>
 
                     <button @click="toggleSectionModal('add')" style="margin-left: auto; width: 200px;">+ Add Section</button>
@@ -836,8 +924,16 @@ async function confirmDelete() {
                     </div>
 
                     <!-- Sort -->
-                    <select style="margin-left: 0px; padding: 6px; padding-left: 15px;">
-                        <option value="">Sort by</option>
+                    <select 
+                        v-model="sortOptionArchived" 
+                        style="margin-left: 0px; padding: 6px; padding-left: 15px;"
+                    >
+                        <option value="latest">Latest</option>
+                        <option value="oldest">Oldest</option>
+                        <option value="az">Course Name (A–Z)</option>
+                        <option value="za">Course Name (Z–A)</option>
+                        <option value="most">Most Students</option>
+                        <option value="fewest">Fewest Students</option>
                     </select>
                 </div>
 
@@ -969,7 +1065,7 @@ async function confirmDelete() {
                                         </div>
                                     </div>
                                 </div>
-                                <p class="paragraph--gray" v-show="!isDeleteSectionBtnVisible" @click="notListed" style="font-weight: 600; color: #6799C8; white-space: nowrap; text-decoration: underline; text-underline-offset: 4px; cursor: pointer;">Not listed?</p>
+                                <p class="paragraph--gray not-listed" v-show="!isDeleteSectionBtnVisible" @click="notListed">Not listed?</p>
                             </div>
                         </div>
 
@@ -1259,6 +1355,21 @@ async function confirmDelete() {
         box-shadow: -2px 0 8px rgba(0,0,0,0.2);
         border-radius: 6px;
         gap: 25px;
+    }
+
+    .not-listed {
+        font-weight: 600; 
+        color: var(--color-primary); 
+        white-space: nowrap; 
+        text-decoration: underline; 
+        text-underline-offset: 4px; 
+        cursor: pointer;
+        transition: background-color 0.1s;
+    }
+
+    .not-listed:hover {
+        color: var(--color-primary-hover);
+        transition: background-color 0.1s;
     }
 
     .dropdown-item {
