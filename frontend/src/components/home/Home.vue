@@ -518,7 +518,7 @@ async function fetchTodaySchedules() {
     const all = res.data
 
     // Filter for today's day_of_week
-    schedules.value = all.filter(s => s.day_of_week === "Mon")
+    schedules.value = all.filter(s => s.day_of_week === todayDayName)
   } catch (err) {
     console.error("❌ Failed to fetch schedules:", err)
   }
