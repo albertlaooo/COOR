@@ -123,49 +123,95 @@
 
     /////////////////////////////// DELETE DEPARTMENT MODAL ////////////////////////////
     const isVisibleDeleteModal = ref(false)
-    const departmentNameToDelete = ref('')
+    const deleteHandler = ref('');
+    const courseIndexToDelete = ref('');
+    const itemNameToDelete = ref('')
 
     async function deleteDepartment() {
-        departmentNameToDelete.value = selectedDept.value.name;
-        toggleDeleteModal()
+        itemNameToDelete.value = selectedDept.value.name;
+        toggleDeleteModal('department')
     }
 
-    function toggleDeleteModal() {
+    function toggleDeleteModal(which, index, courseName) {
+        
+        if(which === 'department') {
+            deleteHandler.value = 'department'
+        }
+        
+        if(which === 'course') {
+            deleteHandler.value = 'course'
+            courseIndexToDelete.value = index
+            itemNameToDelete.value = courseName
+        }
+
+        if(which === 'cancel') {
+            setTimeout(() => {
+                deleteHandler.value = ''
+                courseIndexToDelete.value = ''
+                itemNameToDelete.value = ''
+            }, 200)
+        }
+
         isVisibleDeleteModal.value = !isVisibleDeleteModal.value
     }
 
     async function confirmDelete() {
-        if (!selectedDept.value || !selectedDept.value.id) {
-            return;
+
+        if(deleteHandler.value === 'department') {
+            if (!selectedDept.value || !selectedDept.value.id) {
+                return;
+            }
+                    
+            const departmentIdToDelete = selectedDept.value.id;
+
+            try {
+                // CLEAR COURSES: Send PUT request to set department_id to NULL for all associated courses
+                console.log(`Clearing courses for Department ID: ${departmentIdToDelete}`);
+                await axios.put(`http://localhost:3000/courses/clear-department/${departmentIdToDelete}`);
+                
+                // DELETE DEPARTMENT
+                await axios.delete(`http://localhost:3000/departments/${departmentIdToDelete}`);
+
+                // UI Update (Refresh Data)
+                await fetchDepartments();
+                await fetchCourses(); 
+
+                selectedDept.value = null;
+                fetchedCourses.value = [];
+                
+            } catch (err) {
+                console.error("Error during department deletion or course clearing:", err);
+                // Mas specific na error message
+                alert("Failed to delete department. Please check if there are other related data (e.g., teachers) preventing the deletion, or check the console.");
+            }
+
+            toggleDeleteModal('cancel')
         }
-        
-        const departmentIdToDelete = selectedDept.value.id;
 
-        try {
-            // CLEAR COURSES: Send PUT request to set department_id to NULL for all associated courses
-            console.log(`Clearing courses for Department ID: ${departmentIdToDelete}`);
-            await axios.put(`http://localhost:3000/courses/clear-department/${departmentIdToDelete}`);
+        if(deleteHandler.value === 'course') {
             
-            // DELETE DEPARTMENT
-            await axios.delete(`http://localhost:3000/departments/${departmentIdToDelete}`);
+            const course = fetchedCourses.value[courseIndexToDelete.value];
 
-            // UI Update (Refresh Data)
-            await fetchDepartments();
-            await fetchCourses(); 
+            // Send request to backend to remove department_id
+            fetch(`http://localhost:3000/courses/update-department/${course.course_id}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ department_id: null }) // set to null
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    fetchCoursesOnDepartment();
+                    fetchDepartments(); 
+                } else {
+                    alert("Failed to remove course from department: " + data.message);
+                }
+            })
+            .catch(err => console.error(err));
 
-            selectedDept.value = null;
-            fetchedCourses.value = [];
-            
-        } catch (err) {
-            console.error("Error during department deletion or course clearing:", err);
-            // Mas specific na error message
-            alert("Failed to delete department. Please check if there are other related data (e.g., teachers) preventing the deletion, or check the console.");
+            toggleDeleteModal('cancel')
         }
-
-        toggleDeleteModal()
     }
-
-
 
     /////////////////////////////// NAVIGATION FUNCTION ////////////////////////////
     function backBtn() {
@@ -498,27 +544,6 @@
         document.removeEventListener('mousedown', handleClickOutside)
     })
 
-    function removeCourse(index) {
-        const course = fetchedCourses.value[index];
-
-        // Send request to backend to remove department_id
-        fetch(`http://localhost:3000/courses/update-department/${course.course_id}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ department_id: null }) // set to null
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                fetchCoursesOnDepartment();
-                fetchDepartments(); 
-            } else {
-                alert("Failed to remove course from department: " + data.message);
-            }
-        })
-        .catch(err => console.error(err));
-    }
-
 </script>
 
 <template>
@@ -638,7 +663,7 @@
                                         {{ crse.course_name }}
                                     </label>
 
-                                    <span @click="removeCourse(index)"
+                                    <span @click="toggleDeleteModal('course', index, crse.course_name)"
                                         style="display: flex; align-items: center; justify-content: center;
                                                 height: 30px; width: 30px; color: red; font-weight: bold; cursor: pointer; flex-shrink: 0;">
                                         ✕
@@ -715,7 +740,7 @@
 
         <!-- Delete Department Modal -->
         <transition name="fade">
-            <div v-show="isVisibleDeleteModal" class="modal" @click.self="toggleDeleteModal"> 
+            <div v-show="isVisibleDeleteModal" class="modal" @click.self="toggleDeleteModal('cancel')"> 
                 <div class="delete-modal-content">
                     <div style="display: flex; flex-direction: column; width: 100%; gap: 24px;">
                         <div style="display: flex; flex-direction: row; gap: 10px; align-items: center; justify-content: start;">
@@ -723,10 +748,10 @@
                             <h3 style="line-height: 0; font-size: x-large; margin: 10px 0px;">Delete Confirmation</h3>
                         </div>
                         
-                        <p>Are you sure you want to delete <strong>{{ departmentNameToDelete }}</strong> department?</p>
+                        <p style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; white-space: normal;">Are you sure you want to delete <strong>{{ itemNameToDelete }}</strong>?</p>
 
                         <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto; margin-top: 12px;">
-                            <button @click="toggleDeleteModal" class="cancelBtn">Cancel</button>
+                            <button @click="toggleDeleteModal('cancel')" class="cancelBtn">Cancel</button>
                             <button @click="confirmDelete()"  class="delete-btn">Delete</button>
                         </div>
                     </div>

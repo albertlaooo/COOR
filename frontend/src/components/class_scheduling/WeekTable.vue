@@ -90,11 +90,10 @@ const teacherAvailabilityDB = ref([])
 const schedule = ref({})
 const times = ref([])
 const defaultTimes = [
-  '07:00-09:00',
+  '07:00-10:00',
   '10:00-13:00',
-  '13:30-15:00',
-  '15:00-16:30',
-  '16:30-17:00'
+  '13:00-14:00',
+  '14:00-17:00'
 ].map(parseTimeRange)
 //#endregion
 

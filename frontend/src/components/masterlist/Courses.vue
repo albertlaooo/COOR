@@ -111,31 +111,87 @@ onMounted(fetchCourses)
 
 //#region ❌ DELETE COURSE MODAL
 const isVisibleDeleteModal = ref(false)
-const courseNameToDelete = ref('')
+const deleteHandler = ref('');
+const subjectIdToDelete = ref('');
+const itemNameToDelete = ref('')
 
 async function deleteCourse() {
-    courseNameToDelete.value = selectedCourse.value.name;
-    toggleDeleteModal()
+    itemNameToDelete.value = selectedCourse.value.name;
+    toggleDeleteModal('course')
 }
 
-function toggleDeleteModal() {
+function toggleDeleteModal(which, subjectId, subjectName) {
+    if(which === 'course') {
+        deleteHandler.value = 'course'
+    }
+    
+    if(which === 'subject') {
+        deleteHandler.value = 'subject'
+        subjectIdToDelete.value = subjectId
+        itemNameToDelete.value = subjectName
+    }
+
+    if(which === 'cancel'){
+        setTimeout(() => {
+            deleteHandler.value = ''
+            subjectIdToDelete.value = ''
+            itemNameToDelete.value = ''
+        }, 200)
+    }
+
     isVisibleDeleteModal.value = !isVisibleDeleteModal.value
 }
 
 async function confirmDelete() {
-    if (!selectedCourse.value || !selectedCourse.value.id) return
 
-    try {
-        await axios.delete(`http://localhost:3000/courses/${selectedCourse.value.id}`)
-        fetchCourses()
-        selectedCourse.value = null
-    } catch (err) {
-        console.error("Error deleting course:", err)
-        alert("Failed to delete course.")
+    if(deleteHandler.value === 'course') {
+        if (!selectedCourse.value || !selectedCourse.value.id) return
+
+        try {
+            await axios.delete(`http://localhost:3000/courses/${selectedCourse.value.id}`)
+            fetchCourses()
+            selectedCourse.value = null
+        } catch (err) {
+            console.error("Error deleting course:", err)
+            alert("Failed to delete course.")
+        }
+
+        toggleDeleteModal('cancel')
     }
 
-    toggleDeleteModal()
+    if(deleteHandler.value === 'subject') {
+        if (!selectedCourse.value || !selectedCourse.value.id) {
+            alert("No course selected.")
+            return
+        }
+
+        try {
+            const res = await axios.delete(`http://localhost:3000/remove-course-subject`, {
+                data: {
+                    course_id: selectedCourse.value.id,
+                    subject_id: subjectIdToDelete.value
+                }
+            })
+
+            if (res.data.success) {
+                console.log(res.data.message)
+                await Promise.all([fetchSubjectsOnCourse(), fetchCourses()]);
+            } else {
+                alert("Failed to remove subject: " + res.data.message)
+            }
+        } catch (error) {
+            if (error.response?.data) {
+                alert(error.response.data.message)
+            } else {
+                alert("An unexpected error occurred while removing the subject.")
+                console.error(error)
+            }
+        }
+
+        toggleDeleteModal('cancel')
+    }
 }
+
 //#endregion
 
 //#region 🔍 SEARCH / FILTER SUBJECTS
@@ -243,36 +299,6 @@ async function subjectAssignConfirm() {
     } else {
         showErrorInput.value = false
         setTimeout(() => { showErrorInput.value = true }, 0)
-    }
-}
-
-async function removeSubject(subjectId) {
-    if (!selectedCourse.value || !selectedCourse.value.id) {
-        alert("No course selected.")
-        return
-    }
-
-    try {
-        const res = await axios.delete(`http://localhost:3000/remove-course-subject`, {
-            data: {
-                course_id: selectedCourse.value.id,
-                subject_id: subjectId
-            }
-        })
-
-        if (res.data.success) {
-            console.log(res.data.message)
-            await Promise.all([fetchSubjectsOnCourse(), fetchCourses()]);
-        } else {
-            alert("Failed to remove subject: " + res.data.message)
-        }
-    } catch (error) {
-        if (error.response?.data) {
-            alert(error.response.data.message)
-        } else {
-            alert("An unexpected error occurred while removing the subject.")
-            console.error(error)
-        }
     }
 }
 //#endregion
@@ -577,7 +603,7 @@ function toggleSubjectAssignModal() { isVisibleSubjectAssign.value = !isVisibleS
                                             - {{ subj.subject_name }}
                                         </label>
 
-                                        <span @click="removeSubject(subj.subject_id)"
+                                        <span @click="toggleDeleteModal('subject', subj.subject_id, subj.subject_name)"
                                             style="display: flex; align-items: center; justify-content: center;
                                                     height: 30px; width: 30px; color: red; font-weight: bold; cursor: pointer; flex-shrink: 0;">
                                             ✕
@@ -690,7 +716,7 @@ function toggleSubjectAssignModal() { isVisibleSubjectAssign.value = !isVisibleS
 
         <!-- Delete Course Modal -->
         <transition name="fade">
-            <div v-show="isVisibleDeleteModal" class="modal" @click.self="toggleDeleteModal"> 
+            <div v-show="isVisibleDeleteModal" class="modal" @click.self="toggleDeleteModal('cancel')"> 
                 <div class="delete-modal-content">
                     <div style="display: flex; flex-direction: column; width: 100%; gap: 24px;">
                         <div style="display: flex; flex-direction: row; gap: 10px; align-items: center; justify-content: start;">
@@ -698,10 +724,10 @@ function toggleSubjectAssignModal() { isVisibleSubjectAssign.value = !isVisibleS
                             <h3 style="line-height: 0; font-size: x-large; margin: 10px 0px;">Delete Confirmation</h3>
                         </div>
                         
-                        <p>Are you sure you want to delete <strong>{{ courseNameToDelete }}</strong> course?</p>
+                        <p style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; white-space: normal;">Are you sure you want to delete <strong>{{ itemNameToDelete }}</strong>?</p>
 
                         <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto; margin-top: 12px;">
-                            <button @click="toggleDeleteModal" class="cancelBtn">Cancel</button>
+                            <button @click="toggleDeleteModal('cancel')" class="cancelBtn">Cancel</button>
                             <button @click="confirmDelete()"  class="delete-btn">Delete</button>
                         </div>
                     </div>
