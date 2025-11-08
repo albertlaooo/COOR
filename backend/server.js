@@ -1926,6 +1926,27 @@ app.get("/get-all-schedules", (req, res) => {
   })
 })
 
+// READ all schedules with details
+app.get("/get-all-schedules-with-details", (req, res) => {
+  const sql = `
+    SELECT s.section_id, s.section_id, s.day_of_week, s.start_time, s.end_time, s.type,
+          sec.section_format,
+          sub.subject_code, sub.subject_name,
+          r.room_code,
+          t.first_name, t.last_name, t.gender
+    FROM ScheduleAssignments s
+    LEFT JOIN Sections sec on s.section_id = sec.section_id
+    LEFT JOIN Subjects sub ON s.subject_id = sub.subject_id
+    LEFT JOIN Rooms r ON s.room_id = r.room_id
+    LEFT JOIN Teachers t ON s.teacher_id = t.teacher_id
+  `;
+  db.all(sql, [], (err, rows) => {
+    if (err) return res.status(500).json({ error: err.message });
+    res.json(rows);
+  });
+});
+
+
 // Get schedule of section
 app.get("/get-schedule/:section_id", (req, res) => {
   const section_id = req.params.section_id;

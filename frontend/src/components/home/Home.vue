@@ -494,6 +494,87 @@ async function fetchSchedulesAndCheckConflicts() {
 
 //#endregion
 
+//#region SCHEDULE TODAY
+const schedules = ref([])
+const searchQuery = ref("")
+
+// Helper — convert minutes (e.g., 480) → "08:00 AM"
+function formatTime(minutes) {
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  const h12 = hours % 12 || 12
+  const ampm = hours < 12 ? "AM" : "PM"
+  return `${h12}:${mins.toString().padStart(2, "0")} ${ampm}`
+}
+
+// Day mapping
+const days = ["Sun", "Mon", "Tue", "Wed", "Thurs", "Fri", "Sat"]
+const todayDayName = days[today.getDay()]
+
+// Fetch all schedules and filter today's
+async function fetchTodaySchedules() {
+  try {
+    const res = await axios.get("http://localhost:3000/get-all-schedules-with-details")
+    const all = res.data
+
+    // Filter for today's day_of_week
+    schedules.value = all.filter(s => s.day_of_week === "Mon")
+  } catch (err) {
+    console.error("❌ Failed to fetch schedules:", err)
+  }
+}
+
+const groupedSchedules = computed(() => {
+  // Group schedules by time range
+  const map = {}
+  schedules.value.forEach(s => {
+    const range = `${formatTime(s.start_time)} - ${formatTime(s.end_time)}`
+    if (!map[range]) map[range] = []
+    map[range].push(s)
+  })
+
+  // Apply search filter
+  const q = searchQuery.value.toLowerCase()
+  const filtered = {}
+  for (const [range, items] of Object.entries(map)) {
+    const matches = items.filter(i => {
+        // Build display name without the dot for searching
+        const prefix = i.gender === 'male' ? 'mr' : 'ms'
+        const displayName = `${prefix} ${i.last_name}`.toLowerCase()
+        
+        return (
+            i.section_format?.toString().toLowerCase().includes(q) ||
+            i.room_code?.toString().toLowerCase().includes(q) ||
+            displayName.includes(q.replace('.', '').toLowerCase()) // remove dots from query
+        )
+    })
+    if (matches.length > 0) filtered[range] = matches
+  }
+
+  // Sort by start_time but keep your time text the same
+  const sorted = Object.entries(filtered)
+    .sort((a, b) => {
+        const aStart = a[1][0].start_time
+        const bStart = b[1][0].start_time
+
+        if (aStart !== bStart) return aStart - bStart
+
+        // secondary sort: earlier end_time comes first
+        const aEnd = a[1][0].end_time
+        const bEnd = b[1][0].end_time
+        return aEnd - bEnd
+    })
+    .reduce((acc, [range, items]) => {
+      acc[range] = items
+      return acc
+    }, {})
+
+  return sorted
+})
+
+//#endregion
+
+
 //#region TOTAL OVERVIEW
 const totalTeachers = ref(0)
 const totalStudents = ref(0)
@@ -603,6 +684,7 @@ onMounted(async () => {
     isUnassignedSectionsFetching.value = false
     await fetchSchedulesAndCheckConflicts()
     isScheduleConflictsFetching.value = false
+    await fetchTodaySchedules()
     await countTeachers()
     await countStudentsAndSections()
     await countDepartments()
@@ -683,7 +765,7 @@ onMounted(async () => {
 
                     <transition name="fade-up" appear>
                         <div v-if="visible[1]" style="display: flex; flex-direction: row; gap: 12px;">
-                            <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <div style="flex: 1; display: flex; flex-direction: column; gap: 12px;">
 
                                 <!-- UNASSIGNED SECTIONS -->
                                 <div
@@ -795,47 +877,37 @@ onMounted(async () => {
                             </div>
 
                             <!-- Today's Schedule -->
-                            <div style="flex: 1; display: flex; flex-direction: column; min-width: 350px; height: fit-content; max-width: 100%; padding: 20px 26px; background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); gap: 12px;">
-                                <div style="border-bottom: 1px solid var(--color-border); padding-bottom: 12px;">
-                                    <p class="paragraph--black-bold">Today's Schedule</p>
-                                </div>
+                            <div style="display: flex; flex-direction: column; min-width: 350px; height: 380px; overflow: hidden; max-width: 100%; padding: 20px 26px; background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); gap: 12px;">
                                 
-                                <div style="display: flex; flex-direction: column; gap: 8px;">
-                                    <div style="display: flex; flex-direction: row; justify-content: space-between;">
-                                        <p>8:00 AM - 9:00 AM</p>
-                                        <p>BSIT 4.1A</p>
-                                        <p>Room 201</p>
+                                <p style="font-size: 20px;" class="paragraph--black-bold">Schedule Today</p>
+                                
+                                <input 
+                                    v-model="searchQuery"
+                                    style="width: 100%; padding-left: 15px; margin: 2px 0px;"
+                                    placeholder="Search"
+                                />
+                                
+                                <div style="display: flex; flex-direction: column; gap: 16px; overflow-y: auto; overflow-x: hidden;">
+                                    <template v-if="Object.keys(groupedSchedules).length > 0">
+                                    <div
+                                        v-for="(items, timeRange) in groupedSchedules"
+                                        :key="timeRange"
+                                        style="display: flex; flex-direction: column; gap: 4px;"
+                                    >
+                                        <p style="font-weight: 600;">{{ timeRange }}</p>
+                                        <div style="display: flex; flex-direction: column; gap: 2px; margin-left: 16px;">
+                                        <p v-for="item in items"
+                                            :key="item.schedule_id">
+                                                • {{ item.section_format }} 
+                                                <span style="display: inline-block; max-width: 180px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom;">
+                                                    ({{ item.gender === 'male' ? 'Mr.' : 'Ms.' }} {{ item.last_name }}
+                                                </span>) - Room {{ item.room_code }}
+                                        </p>
+                                        </div>
                                     </div>
+                                    </template>
 
-                                    <div style="display: flex; flex-direction: row; justify-content: space-between;">
-                                        <p>8:00 AM - 9:00 AM</p>
-                                        <p>BSIT 4.1A</p>
-                                        <p>Room 201</p>
-                                    </div>
-
-                                    <div style="display: flex; flex-direction: row; justify-content: space-between;">
-                                        <p>8:00 AM - 9:00 AM</p>
-                                        <p>BSIT 4.1A</p>
-                                        <p>Room 201</p>
-                                    </div>
-
-                                    <div style="display: flex; flex-direction: row; justify-content: space-between;">
-                                        <p>8:00 AM - 9:00 AM</p>
-                                        <p>BSIT 4.1A</p>
-                                        <p>Room 201</p>
-                                    </div>
-
-                                    <div style="display: flex; flex-direction: row; justify-content: space-between;">
-                                        <p>8:00 AM - 9:00 AM</p>
-                                        <p>BSIT 4.1A</p>
-                                        <p>Room 201</p>
-                                    </div>
-
-                                    <div style="display: flex; flex-direction: row; justify-content: space-between;">
-                                        <p>8:00 AM - 9:00 AM</p>
-                                        <p>BSIT 4.1A</p>
-                                        <p>Room 201</p>
-                                    </div>
+                                    <p v-else style="text-align: center; color: #7F8D9C; font-style: italic;">No schedule today.</p>
                                 </div>
                             </div>
 
@@ -943,7 +1015,7 @@ onMounted(async () => {
 
                     <!-- calendar -->
                     <transition name="fade-up" appear>
-                        <div v-show="visible[0]" class="calendar">
+                        <div v-show="visible[1]" class="calendar">
                             <h2>{{ currentYear }}</h2>
 
                             <div
@@ -1005,7 +1077,7 @@ onMounted(async () => {
 
                     <!-- notes -->
                     <transition name="fade-up" appear>
-                        <div v-show="visible[1]" style="display: flex; flex-direction: column; padding: 25px 16px; background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); gap: 12px;">
+                        <div v-show="visible[2]" style="display: flex; flex-direction: column; padding: 25px 16px; background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); gap: 12px;">
                             <div style="display: flex; flex-direction: row; padding-bottom: 4px; padding: 0px 9px;">
                                 <p style="font-size: 20px;" class="paragraph--black-bold">Notes</p>
                                 <div class="add-note" @click="toggleNoteModal('add')">
@@ -1166,7 +1238,6 @@ onMounted(async () => {
     .unassigned-sections {
         position: relative; /* important for overlay */
         flex: 1;
-        width: clamp(250px, 15vw, 15vw);
         min-width: 250px;
         max-height: 120px;
         border-radius: 8px;
@@ -1216,7 +1287,6 @@ onMounted(async () => {
     .schedule-conflicts {
         position: relative;
         flex: 1;
-        width: clamp(250px, 15vw, 15vw);
         min-width: 250px;
         max-height: 120px;
         border-radius: 8px;

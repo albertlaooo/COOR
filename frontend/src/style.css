@@ -342,6 +342,25 @@ select {
     background: #eee;
 }
 
+/* SCROLL BAR FOR CHROME */
+::-webkit-scrollbar {
+  width: 10px;           /* width of scrollbar */
+}
+
+::-webkit-scrollbar-track {
+  background: white;     /* track background */
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #e0e0e0; /* scrollbar thumb color */
+  border-radius: 6px;      /* round edges */
+  border: 2px solid white; /* optional: adds padding effect */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #c5c5c5; /* scrollbar thumb color */
+}
+
 
 @keyframes scalePulse {
   0% {
