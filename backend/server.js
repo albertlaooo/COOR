@@ -131,9 +131,11 @@ db.serialize(() => {
             student_count INTEGER,
             academic_year TEXT NOT NULL,
             section_format TEXT NOT NULL,
-            schedule_status TEXT NOT NULL
+            schedule_status TEXT NOT NULL,
+            archived_date TEXT,
+            archived_time TEXT
           );
-`);
+    `);
 
     db.run(`
       CREATE TABLE IF NOT EXISTS Departments (
@@ -213,6 +215,31 @@ db.serialize(() => {
           start_time TEXT,
           end_time TEXT,
           FOREIGN KEY (section_id) REFERENCES Sections(section_id) ON DELETE CASCADE
+        );
+    `);
+
+      db.run(`
+        CREATE TABLE IF NOT EXISTS ScheduleAssignmentsArchived (
+          schedule_assignment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          section_id INTEGER,
+          teacher_name TEXT,
+          room_code TEXT,
+          subject_name TEXT,
+          day_of_week VARCHAR(20),
+          start_time INTEGER,
+          end_time INTEGER,
+          type TEXT,
+          FOREIGN KEY (section_id) REFERENCES SectionsArchived(section_id) ON DELETE CASCADE
+        );
+    `);
+
+    db.run(`
+        CREATE TABLE IF NOT EXISTS ScheduleTimeColumnArchived (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          section_id INTEGER,
+          start_time TEXT,
+          end_time TEXT,
+          FOREIGN KEY (section_id) REFERENCES SectionsArchived(section_id) ON DELETE CASCADE
         );
     `);
 });
@@ -1035,26 +1062,39 @@ app.get("/sections/:id/subjects-required", (req, res) => {
 // ADD Section archived
 app.post("/sections/archive-sections", (req, res) => {
   const { academic_year, semester } = req.body;
-  
+
   const clean_academic_year = academic_year.replace(/–/g, '-');
 
+  // Get Philippine local date & time
+  const now = new Date();
+  const optionsDate = { year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Manila' };
+  const optionsTime = { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila' };
+
+  const archived_date = now.toLocaleDateString('en-US', optionsDate); // e.g., November 8, 2025
+  const archived_time = now.toLocaleTimeString('en-US', optionsTime);  // e.g., 6:38 PM
+
   const insertSql = `
-    INSERT INTO SectionsArchived (section_id, course_id, course_name, year, semester, student_count, academic_year, section_format, schedule_status)
-    SELECT section_id, course_id, course_name, year, semester, student_count, academic_year, section_format, schedule_status
+    INSERT INTO SectionsArchived 
+      (section_id, course_id, course_name, year, semester, student_count, academic_year, section_format, schedule_status, archived_date, archived_time)
+    SELECT 
+      section_id, course_id, course_name, year, semester, student_count, academic_year, section_format, schedule_status,
+      ?, ?
     FROM Sections
     WHERE academic_year = ? AND semester = ?
   `;
 
-  db.run(insertSql, [clean_academic_year, semester], function (err) {
+  db.run(insertSql, [archived_date, archived_time, clean_academic_year, semester], function (err) {
     if (err) {
       console.error("Error archiving sections:", err);
       return res.status(500).json({ error: "Failed to archive sections" });
     }
     res.json({
-      message: "Sections archived successfully (without deletion)",
+      message: "Sections archived successfully with Philippine date & time",
     });
   });
 });
+
+
 
 // READ all Sections Archived
 app.get("/sections-archived", (req, res) => {
@@ -1946,7 +1986,6 @@ app.get("/get-all-schedules-with-details", (req, res) => {
   });
 });
 
-
 // Get schedule of section
 app.get("/get-schedule/:section_id", (req, res) => {
   const section_id = req.params.section_id;
@@ -2090,4 +2129,109 @@ app.get("/get-times/:section_id", (req, res) => {
 // Start server
 app.listen(3000, () => {
   console.log("Backend running at http://localhost:3000");
+});
+
+/*////////////////////////////////////////////////////////////////////////
+/////////////////////////  ScheduleAssignmentArchived  ///////////////////////////
+////////////////////////////////////////////////////////////////////////*/ 
+// POST /add-schedule-archive
+app.post("/add-schedule-archive", (req, res) => {
+    const { section_id, teacher_name, room_code, subject_name, day_of_week, start_time, end_time, type } = req.body;
+
+    const sql = `
+        INSERT INTO ScheduleAssignmentsArchived
+        (section_id, teacher_name, room_code, subject_name, day_of_week, start_time, end_time, type)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    db.run(sql, [section_id, teacher_name, room_code, subject_name, day_of_week, start_time, end_time, type], function(err) {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ success: false, error: err.message });
+        }
+        res.json({ success: true, insertedId: this.lastID });
+    });
+});
+
+// Get schedule of section
+app.get("/get-schedule-archive/:section_id", (req, res) => {
+  const section_id = req.params.section_id;
+
+  db.all(
+    `SELECT 
+        s.day_of_week, 
+        s.start_time, 
+        s.end_time, 
+        COALESCE(s.subject_name, 'null') AS subject_name, 
+        COALESCE(s.room_code, 'null') AS room_code, 
+        COALESCE(s.teacher_name, 'null') AS teacher, 
+        s.type
+     FROM ScheduleAssignmentsArchived s
+     WHERE s.section_id = ?`,
+    [section_id],
+    (err, rows) => {
+      if (err)
+        return res.status(500).json({ success: false, error: err.message });
+
+      const scheduleObj = {};
+      rows.forEach(row => {
+        const startStr =
+          String(Math.floor(row.start_time / 60)).padStart(2, "0") +
+          ":" +
+          String(row.start_time % 60).padStart(2, "0");
+        const endStr =
+          String(Math.floor(row.end_time / 60)).padStart(2, "0") +
+          ":" +
+          String(row.end_time % 60).padStart(2, "0");
+        const range = `${startStr}-${endStr}`;
+
+        if (!scheduleObj[row.day_of_week]) scheduleObj[row.day_of_week] = {};
+        scheduleObj[row.day_of_week][range] = {
+          subject: row.subject_name,
+          room: row.room_code,
+          teacher: row.teacher,
+          type: row.type,
+        };
+      });
+
+      res.json({ success: true, schedule: scheduleObj });
+    }
+  );
+});
+
+/*////////////////////////////////////////////////////////////////////////
+/////////////////////////  ScheduleTimeColumnArchived  ///////////////////////////
+////////////////////////////////////////////////////////////////////////*/ 
+// POST /add-times-archive
+app.post("/add-times-archive", (req, res) => {
+    const { section_id, start_time, end_time } = req.body;
+
+    const sql = `
+        INSERT INTO ScheduleTimeColumnArchived
+        (section_id, start_time, end_time)
+        VALUES (?, ?, ?)
+    `;
+
+    db.run(sql, [section_id, start_time, end_time], function(err) {
+        if (err) {
+            console.error(err);
+            return res.status(500).json({ success: false, error: err.message });
+        }
+        res.json({ success: true, insertedId: this.lastID });
+    });
+});
+
+// Get times for a section
+app.get("/get-times-archive/:section_id", (req, res) => {
+  const section_id = req.params.section_id;
+
+  db.all(`SELECT start_time, end_time FROM ScheduleTimeColumnArchived WHERE section_id = ? ORDER BY id ASC`, [section_id], (err, rows) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ success: false, error: "Database error" });
+    }
+
+    res.json({ success: true, times: rows }); 
+    // Example rows: [{ start_time: "07:00", end_time: "09:00" }, { start_time: "10:00", end_time: "13:00" }]
+  });
 });

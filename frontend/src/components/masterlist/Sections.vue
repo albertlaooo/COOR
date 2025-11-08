@@ -153,6 +153,12 @@ function toggleMoveUpModal(groupKey) {
     isVisibleMoveUpModal.value = !isVisibleMoveUpModal.value
 }
 
+function timeStrToMinutes(timeStr) {
+    // "07:15" → 435
+    const [h, m] = timeStr.split(":").map(Number);
+    return h * 60 + m;
+}
+
 // Simplified recalculateSectionFormat – no more section parameter
 function recalculateSectionFormat(courseName, newYear) {
     const selectedCourse = coursesDB.value.find(
@@ -165,7 +171,9 @@ function recalculateSectionFormat(courseName, newYear) {
     return `${courseCode}${yearPart}`.trim()
 }
 
+const isMovingUp = ref(false)
 async function moveUpBtn() {
+    isMovingUp.value = true
     const response = await fetch("http://localhost:3000/check-password", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -176,6 +184,7 @@ async function moveUpBtn() {
 
     if (!data.success) {
     alert("Wrong password!");
+    isMovingUp.value = false
     return;
     }
 
@@ -183,6 +192,7 @@ async function moveUpBtn() {
     const match = selectedGroupKey.value.match(regex)
     if (!match) {
         alert("Invalid group key format.")
+        isMovingUp.value = false
         return
     }
 
@@ -202,6 +212,7 @@ async function moveUpBtn() {
         alert("No active records found.")
         isVisibleMoveUpModal.value = false
         moveUpConfirmation.value = 'note'
+        isMovingUp.value = false
         return
     }
 
@@ -232,6 +243,67 @@ async function moveUpBtn() {
                 }
             }
 
+            // --- ARCHIVE RELATED SCHEDULES ---
+            try {
+                const schedules = await axios.get(`http://localhost:3000/get-schedule/${record.section_id}`);
+                console.log("Fetched schedules for section", record.section_id, schedules.data);
+
+                if (schedules.data.success) {
+                    for (const day in schedules.data.schedule) {
+                        const times = schedules.data.schedule[day];
+                        for (const range in times) {
+                            const s = times[range];
+                            const [start_time, end_time] = range.split('-');
+
+                            const payload = {
+                                section_id: record.section_id,
+                                teacher_name: s.teacher,
+                                room_code: s.room,
+                                subject_name: s.subject,
+                                day_of_week: day,
+                                start_time: timeStrToMinutes(start_time),
+                                end_time: timeStrToMinutes(end_time),
+                                type: s.type,
+                            };
+
+                            try {
+                                const res = await axios.post("http://localhost:3000/add-schedule-archive", payload);
+                                console.log("Schedule archive response:", res.data);
+                            } catch (err) {
+                                console.error("Error inserting schedule archive:", err, "Payload:", payload);
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Error fetching schedule for section", record.section_id, err);
+            }
+
+            // --- ARCHIVE SCHEDULE TIME COLUMNS ---
+            try {
+                const timesCols = await axios.get(`http://localhost:3000/get-times/${record.section_id}`);
+                console.log("Fetched time columns for section", record.section_id, timesCols.data);
+
+                if (timesCols.data.success) {
+                    for (const t of timesCols.data.times) {
+                        const payload = {
+                            section_id: record.section_id,
+                            start_time: t.start_time,
+                            end_time: t.end_time
+                        };
+
+                        try {
+                            const res = await axios.post("http://localhost:3000/add-times-archive", payload);
+                            console.log("Time column archive response:", res.data);
+                        } catch (err) {
+                            console.error("Error inserting time column archive:", err, "Payload:", payload);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Error fetching time columns for section", record.section_id, err);
+            }
+
             // Delete the old record (we always delete)
             await axios.delete(`http://localhost:3000/sections/${record.section_id}`)
 
@@ -257,10 +329,12 @@ async function moveUpBtn() {
         await fetchArchivedSections()
 
         isVisibleMoveUpModal.value = false
+        isMovingUp.value = false
         moveUpConfirmation.value = 'note'
     } catch (err) {
         console.error("Error moving up records:", err)
         alert("Failed to move up records.")
+        isMovingUp.value = false
     }
 }
 //#endregion
@@ -441,6 +515,108 @@ watch([course, year, semester, coursesDB], () => {
 }, { deep: true })
 //#endregion
 
+//#region VIEW SECTION SCHEDULE
+const isVisibleSectionSchedule = ref(false)
+
+async function toggleSectionScheduleModal(section) {
+    selectedSection.value = section
+    isVisibleSectionSchedule.value = !isVisibleSectionSchedule.value
+    await fetchSectionScheduleAssignments()
+    await fetchTimeColumn()
+}
+
+// SCHEDULE DATA
+const schedule = ref({})
+const days = ['Mon', 'Tue', 'Wed', 'Thurs', 'Fri', 'Sat']
+const times = ref([])
+const activeCell = ref({ day: null, time: null })
+const defaultTimes = [
+  '07:00-10:00',
+  '10:00-13:00',
+  '13:00-14:00',
+  '14:00-17:00'
+].map(parseTimeRange)
+
+const fetchSectionScheduleAssignments = async () => {
+  try {
+    const res = await axios.get(`http://localhost:3000/get-schedule-archive/${selectedSection.value.section_id}`)
+    if (res.data.success) {
+      schedule.value = res.data.schedule // assign the fetched object to schedule.value
+      console.log('Fetched schedule:', schedule.value)
+    } else {
+      console.warn('No schedule found for this section')
+      schedule.value = {} // reset if nothing found
+    }
+  } catch (err) {
+    console.error('Error fetching schedule:', err)
+  } 
+}
+
+const fetchTimeColumn = async () => {
+  try {
+    const res = await axios.get(`http://localhost:3000/get-times-archive/${selectedSection.value.section_id}`)
+    if (res.data.success && res.data.times.length > 0) {
+      times.value = res.data.times.map(t => ({ start: t.start_time, end: t.end_time }));
+    } else {
+      // Use default times if nothing returned
+      times.value = defaultTimes;
+    }
+  } catch (err) {
+    console.error('Error fetching times:', err)
+    // Use default times if error occurs
+    times.value = defaultTimes
+  }
+}
+
+function isCellActive(day, time) {
+  return (
+    activeCell.value.day === day &&
+    activeCell.value.time.start === time.start &&
+    activeCell.value.time.end === time.end
+  )
+}
+//#endregion
+
+//#region 🕒 TIME CONVERSION UTILITIES
+// 🔹 Converts "7:00" → 420, "1:30" → 90, etc.
+function toMinutes(timeStr) {
+  if (typeof timeStr === 'number') return timeStr // already in minutes
+  if (typeof timeStr !== 'string') return 0 // fallback for null or undefined
+
+  const [hours, minutes] = timeStr.split(':').map(Number)
+  return hours * 60 + (minutes || 0)
+}
+
+// 🔹 Converts minutes → "HH:MM" (e.g., 420 → "07:00")
+function toHHMM(minutes) {
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+}
+
+// 🔹 Converts "7:00-9:00" → { start: 420, end: 540 }
+function parseTimeRange(range) {
+  const [start, end] = range.split('-')
+  return { start: toMinutes(start), end: toMinutes(end) }
+}
+
+// 🔹 Converts 24-hour minutes → 24-hour display format (e.g., 780 → "13:00")
+function formatTime(minutes) {
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+  return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+}
+
+// 🔹 Converts minutes → 12-hour format (UI display only)
+function formatTime12Hour(minutes) {
+  if (minutes === null || minutes === undefined) return '--';
+  const hours24 = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  const hours12 = hours24 % 12 || 12;
+  return `${hours12}:${mins.toString().padStart(2, '0')}`;
+}
+//#endregion
+
 //#region 🗑️ DELETE MODAL (Section and Archived)
 const isVisibleDeleteModal = ref(false)
 const sectionNameToDelete = ref('')
@@ -553,7 +729,7 @@ async function confirmDelete() {
                 
             </div>
 
-            <!-- Content -->
+            <!-- Active Sections -->
             <div style="display: flex; flex-direction: column; gap: 18px;" v-if="activeTab === 'active'">
                 <div style="display: flex; flex-direction: row; gap: 10px; align-items: center;">
                     <div style="position: relative; display: inline-block;">
@@ -637,6 +813,7 @@ async function confirmDelete() {
                 </div>
             </div>
 
+            <!-- Archived Sections -->
             <div style="display: flex; flex-direction: column; gap: 18px;" v-else-if="activeTab === 'archived'">
                 <div style="display: flex; flex-direction: row; gap: 10px; align-items: center;">
                     <div style="position: relative; display: inline-block;">
@@ -682,7 +859,10 @@ async function confirmDelete() {
                         </svg>
                     </div>
                     <div class="card-container">
-                        <div v-for="section in group" :key="section.section_id" class="card">
+                        <div v-for="section in group" 
+                            :key="section.section_id" 
+                            class="card" 
+                            @click="toggleSectionScheduleModal(section)">
                         <p class="paragraph--black-bold">{{ section.section_format }}</p>
                         <p>{{ section.course_name }}</p>
                         <p style="margin-top: 16px;">{{ section.student_count }} Students</p>
@@ -695,7 +875,7 @@ async function confirmDelete() {
 
         <!-- Move Up / Archive Modal -->
         <transition name="fade" mode="out-in">
-            <div v-show="isVisibleMoveUpModal" class="modal" @click.self="cancelMoveUpBtn"> 
+            <div v-show="isVisibleMoveUpModal" class="modal" @click.self="!isMovingUp && cancelMoveUpBtn"> 
                 <div class="modal-content-archive">
 
                     <transition name="slide-left">
@@ -736,8 +916,18 @@ async function confirmDelete() {
                             </div>
 
                             <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto; margin-top: 20px; margin-bottom: 4px;">
-                                <button @click="cancelMoveUpBtn" class="cancelBtn">Cancel</button>
-                                <button class="delete-btn" @click="moveUpBtn">Move Up</button>
+                                <button @click="cancelMoveUpBtn" :disabled="isMovingUp" class="cancelBtn">Cancel</button>
+                                <button class="delete-btn" 
+                                        @click="moveUpBtn"
+                                        :disabled="isMovingUp"
+                                        :style="{
+                                            width: 'fit-content',
+                                            borderColor: isMovingUp ? 'rgba(184, 67, 67, 0.87)' : '',
+                                            backgroundColor: isMovingUp ? 'rgba(184, 67, 67, 0.87)' : '',
+                                            color: isMovingUp ? 'white' : '',
+                                            cursor: isMovingUp ? 'not-allowed' : 'pointer'
+                                        }">{{ isMovingUp ? 'Moving up..' : 'Move Up' }}</button>
+
                             </div>
                         </div>
                     </transition>
@@ -749,7 +939,7 @@ async function confirmDelete() {
         <!-- Add Section Modal -->
         <transition name="fade">
             <div v-show="isVisibleAddSection" class="modal" @click.self="toggleSectionModal('cancel')">
-               <div class="modal-content-add-subject">
+               <div class="modal-content-add-section">
                     <h2 style="color: var(--color-primary); line-height: 0; margin: 12px;">Section Information</h2>
 
                     <div style="display: flex; flex-direction: column; width: 100%; gap: 14px;">
@@ -835,6 +1025,71 @@ async function confirmDelete() {
                             <button v-show="!isDeleteSectionBtnVisible" @click="sectionConfirm">Confirm</button>
                             <button v-show="isDeleteSectionBtnVisible" @click="deleteSectionBtn()" class="delete-btn">Delete</button>
                         </div>
+               </div>
+            </div>
+        </transition>
+
+        <!-- View Section Schedule Modal -->
+        <transition name="fade">
+            <div v-show="isVisibleSectionSchedule" class="modal" @click.self="toggleSectionScheduleModal('cancel')">
+               <div class="modal-content-section-schedule">
+                    <div style="display: flex; flex-direction: column;  align-self: flex-start; gap: 2px;">
+                        <div style="display: flex; flex-direction: row; gap: 6px;">
+                            <p style="font-weight: 600;">Section:</p>
+                            <p>{{ selectedSection?.section_format || '' }}</p>
+                        </div>
+
+                        <div style="display: flex; flex-direction: row; gap: 6px;">
+                            <p style="font-weight: 600;">Date Archived:</p>
+                            <p>
+                                {{ selectedSection?.archived_date }}
+                            </p>
+                        </div>
+
+                        <div style="display: flex; flex-direction: row; gap: 6px;">
+                            <p style="font-weight: 600;">Time Archived:</p>
+                            <p>
+                                {{ selectedSection?.archived_time }}
+                            </p>
+                        </div>
+                    </div>
+
+                     <!-- Table -->
+                    <div class="schedule-grid">
+                        <!-- Header Row -->
+                        <div class="time-label">Time</div>
+                        <div v-for="day in days" 
+                        :key="day" 
+                        class="day">{{ day }}</div>
+
+                        <!-- Rows -->
+                        <template v-for="time in times" :key="time.start">
+                            <div class="time">
+                                {{ formatTime12Hour(time.start) }} - {{ formatTime12Hour(time.end) }}
+                            </div>
+
+                            <div v-for="day in days" 
+                                :key="day" 
+                                class="cell"
+                                :class="{ 'clicked-cell': isCellActive(day, time) }">
+                                <template v-if="schedule[day] && schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`]">
+                                    <p>Room: {{ schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].room }}</p>
+                                    <div style="display: flex; flex-direction: row; gap: 4px;">
+                                    <p>{{ schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].subject }}</p>
+                                    <p>
+                                        {{ schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].type 
+                                        ? `(${schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].type})` 
+                                        : '' }}
+                                    </p>
+                                    </div>
+                                    <p>{{ schedule[day][`${formatTime(time.start)}-${formatTime(time.end)}`].teacher }}</p>
+                                    
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+
+                    <button @click="toggleSectionScheduleModal('cancel')" class="cancelBtn">Close</button>
                </div>
             </div>
         </transition>
@@ -975,7 +1230,7 @@ async function confirmDelete() {
         border-radius: 6px;
     }
 
-    .modal-content-add-subject {
+    .modal-content-add-section {
         display: flex;
         flex-direction: column;
         background-color: white;
@@ -991,6 +1246,21 @@ async function confirmDelete() {
         gap: 45px;
     }
 
+    .modal-content-section-schedule {
+        display: flex;
+        flex-direction: column;
+        background-color: white;
+        height: auto;
+        align-items: center;
+        width: 80%;
+        min-width: 1050px;
+        max-width: 1350px;
+        padding: 55px;
+        box-shadow: -2px 0 8px rgba(0,0,0,0.2);
+        border-radius: 6px;
+        gap: 25px;
+    }
+
     .dropdown-item {
         padding-left: 12px;
         padding-right: 12px;
@@ -1003,6 +1273,111 @@ async function confirmDelete() {
 
     .dropdown-item:hover {
         background: #eee;
+    }
+
+    /* =============================
+        🗓️ SCHEDULE GRID
+    ============================= */
+    .schedule-grid {
+        display: grid;
+        grid-template-columns: minmax(140px, 0.8fr) repeat(6, 1fr);
+        grid-auto-rows: auto;
+        text-align: center;
+        border-collapse: collapse;
+    }
+
+    /* Header Row */
+    .day,
+    .time-label {
+        border: 1px solid rgba(179, 179, 179, 0.6);
+        background-color: #009CC6;
+        color: white;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 45px;
+    }
+
+    .time-label {
+        background-color: #3571B7;
+    }
+
+    /* Time Column */
+    .time {
+        height: 95px;
+        border: 1px solid rgba(179, 179, 179, 0.6);
+        background-color: #6799C8;
+        color: white;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all ease 0.1s;
+    }
+
+    /* Default Cell */
+    .cell {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid rgba(179, 179, 179, 0.6);
+        text-align: left;
+        padding: 10px;
+        font-size: 14px;
+        transition: all ease 0.1s;
+        min-width: 135px;
+        background-color: white;
+    }
+
+    .cell > p:nth-of-type(1) {
+        display: inline-block; 
+        width: auto;
+        max-width: 85%; 
+        white-space: nowrap; 
+        overflow: hidden; 
+        text-overflow: ellipsis;
+        margin-left: auto;
+    }
+
+    .cell > div {
+        margin-top: auto;
+        margin-bottom: 1px;
+        height: 18px;
+    }
+
+    .cell > div > p:nth-of-type(1) {
+        display: inline-block; 
+        width: auto;
+        max-width: 85%; 
+        white-space: nowrap; 
+        overflow: hidden; 
+        text-overflow: ellipsis;
+        font-weight: 600; 
+        font-size: 0.90rem;
+    }
+
+    .cell > div > p:nth-of-type(2) {
+        display: inline-block;
+        white-space: nowrap; 
+        font-weight: 600; 
+        font-size: 0.90rem;
+    }
+
+    .cell > p:nth-of-type(2) {
+        display: inline-block; 
+        width: auto;
+        max-width: 85%; 
+        white-space: nowrap; 
+        overflow: hidden; 
+        text-overflow: ellipsis;
+    }
+
+    /* Highlight Filled Cells */
+    .cell:not(:empty) {
+        background-color: #dff0d8;
+        border-color: #b2d8b2;
+        color: #333;
+        transition: all ease 0.1s;
     }
 
     /* Transition classes */

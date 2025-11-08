@@ -574,7 +574,6 @@ const groupedSchedules = computed(() => {
 
 //#endregion
 
-
 //#region TOTAL OVERVIEW
 const totalTeachers = ref(0)
 const totalStudents = ref(0)
