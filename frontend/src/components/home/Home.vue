@@ -877,7 +877,7 @@ onMounted(async () => {
                             </div>
 
                             <!-- Today's Schedule -->
-                            <div style="display: flex; flex-direction: column; min-width: 350px; height: 380px; overflow: hidden; max-width: 100%; padding: 20px 26px; background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); gap: 12px;">
+                            <div style="display: flex; flex-direction: column; min-width: 380px; height: 380px; overflow: hidden; max-width: 100%; padding: 20px 26px; background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); gap: 12px;">
                                 
                                 <p style="font-size: 20px;" class="paragraph--black-bold">Schedule Today</p>
                                 
@@ -907,7 +907,7 @@ onMounted(async () => {
                                     </div>
                                     </template>
 
-                                    <p v-else style="text-align: center; color: #7F8D9C; font-style: italic;">No schedule today.</p>
+                                    <p v-else style="text-align: center; color: #7F8D9C; font-style: italic; margin-top: 115px;">No schedule today.</p>
                                 </div>
                             </div>
 
