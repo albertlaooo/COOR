@@ -511,6 +511,100 @@ app.get("/teachers", (req, res) => {
   });
 });
 
+// Get teachers that have schedule assignments in completed sections
+// of the latest academic year and semester (For export)
+app.get("/teachers/latest-schedule", (req, res) => {
+  // Step 1: Get latest academic year and semester with completed sections
+  const latestSql = `
+    SELECT academic_year, semester
+    FROM Sections
+    WHERE schedule_status = 'Complete'
+    ORDER BY 
+      CAST(SUBSTR(academic_year, 1, 4) AS INTEGER) DESC,
+      semester DESC
+    LIMIT 1
+  `;
+
+  db.get(latestSql, [], (err, latestRow) => {
+    if (err) {
+      console.error("Error fetching latest A.Y. and semester:", err.message);
+      return res.status(500).json({ error: err.message });
+    }
+
+    if (!latestRow) {
+      // No completed sections found
+      return res.json([]);
+    }
+
+    const { academic_year, semester } = latestRow;
+
+    // Step 2: Fetch teachers linked to completed sections for that semester/year
+    const sql = `
+      SELECT
+        t.teacher_id,
+        t.first_name,
+        t.last_name,
+        t.gender,
+        COALESCE(
+          (SELECT GROUP_CONCAT(d.department_code, ', ')
+           FROM TeacherDepartments td
+           JOIN Departments d ON td.department_id = d.department_id
+           WHERE td.teacher_id = t.teacher_id), ''
+        ) AS departments,
+        COALESCE(
+          (SELECT GROUP_CONCAT(s.subject_code, ', ')
+           FROM TeacherSubjects ts
+           JOIN Subjects s ON ts.subject_id = s.subject_id
+           WHERE ts.teacher_id = t.teacher_id), ''
+        ) AS subjects,
+        COALESCE(
+          (SELECT GROUP_CONCAT(
+              day_of_week || ' ' ||
+              IFNULL(ltrim(strftime('%I:%M %p', time_from), '0'), '') ||
+              ' - ' ||
+              IFNULL(ltrim(strftime('%I:%M %p', time_to), '0'), ''), ', ')
+           FROM TeacherAvailability ta
+           WHERE ta.teacher_id = t.teacher_id
+           ORDER BY 
+             CASE day_of_week
+               WHEN 'Monday' THEN 1
+               WHEN 'Tuesday' THEN 2
+               WHEN 'Wednesday' THEN 3
+               WHEN 'Thursday' THEN 4
+               WHEN 'Friday' THEN 5
+               WHEN 'Saturday' THEN 6
+               WHEN 'Sunday' THEN 7
+             END
+          ), ''
+        ) AS availability
+      FROM Teachers t
+      WHERE t.teacher_id IN (
+        SELECT DISTINCT sa.teacher_id
+        FROM ScheduleAssignments sa
+        JOIN Sections sec ON sa.section_id = sec.section_id
+        WHERE sec.schedule_status = 'Complete'
+          AND sec.academic_year = ?
+          AND sec.semester = ?
+      )
+      ORDER BY t.teacher_id;
+    `;
+
+    db.all(sql, [academic_year, semester], (err, rows) => {
+      if (err) {
+        console.error("Error fetching teachers with latest schedule:", err.message);
+        return res.status(500).json({ error: err.message });
+      }
+
+      // Include the latest semester info in the response (optional)
+      res.json({
+        latest_semester: semester,
+        latest_academic_year: academic_year,
+        teachers: rows
+      });
+    });
+  });
+});
+
 // DELETE teacher
 app.delete("/teachers/:id", (req, res) => {
   const id = req.params.id;
@@ -1093,8 +1187,6 @@ app.post("/sections/archive-sections", (req, res) => {
     });
   });
 });
-
-
 
 // READ all Sections Archived
 app.get("/sections-archived", (req, res) => {
@@ -2037,6 +2129,96 @@ app.get("/get-schedule/:section_id", (req, res) => {
       res.json({ success: true, schedule: scheduleObj });
     }
   );
+});
+
+// Get schedule of teacher (latest academic year & semester)
+app.get("/get-teacher-schedule/:teacher_id", (req, res) => {
+  const teacher_id = req.params.teacher_id;
+
+  const sql = `
+    SELECT 
+      s.day_of_week, 
+      s.start_time, 
+      s.end_time, 
+      COALESCE(sub.subject_code, 'null') AS subject_code,
+      COALESCE(sub.subject_name, 'null') AS subject_name, 
+      COALESCE(r.room_code, 'null') AS room_code, 
+      COALESCE(sec.section_format, 'null') AS section,
+      t.gender AS gender,
+      t.first_name,
+      t.last_name,
+      s.type,
+      sec.academic_year,
+      sec.semester,
+      sec.course_name,
+      sec.year
+    FROM ScheduleAssignments s
+    LEFT JOIN Subjects sub ON s.subject_id = sub.subject_id
+    LEFT JOIN Rooms r ON s.room_id = r.room_id
+    LEFT JOIN Sections sec ON s.section_id = sec.section_id
+    LEFT JOIN Teachers t ON s.teacher_id = t.teacher_id
+    WHERE s.teacher_id = ?
+      AND (sec.academic_year, sec.semester) = (
+        SELECT academic_year, semester
+        FROM Sections
+        ORDER BY academic_year DESC, semester DESC
+        LIMIT 1
+      )
+  `;
+
+  db.all(sql, [teacher_id], (err, rows) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+
+    const scheduleObj = {};
+    let sectionInfo = null;
+    let teacherInfo = null;
+
+    rows.forEach(row => {
+      const startStr =
+        String(Math.floor(row.start_time / 60)).padStart(2, "0") +
+        ":" +
+        String(row.start_time % 60).padStart(2, "0");
+      const endStr =
+        String(Math.floor(row.end_time / 60)).padStart(2, "0") +
+        ":" +
+        String(row.end_time % 60).padStart(2, "0");
+      const range = `${startStr}-${endStr}`;
+
+      if (!scheduleObj[row.day_of_week]) scheduleObj[row.day_of_week] = {};
+      scheduleObj[row.day_of_week][range] = {
+        subject_code: row.subject_code,
+        subject: row.subject_name,
+        room: row.room_code,
+        section: row.section,
+        gender: row.gender, // optional if you still want it per schedule entry
+        type: row.type,
+      };
+
+      // Grab section info from the first row
+      if (!sectionInfo) {
+        sectionInfo = {
+          academic_year: row.academic_year,
+          semester: row.semester,
+          course_name: row.course_name,
+          year: row.year
+        };
+      }
+
+      // Grab teacher info from the first row, now including gender
+      if (!teacherInfo) {
+        teacherInfo = {
+          first_name: row.first_name,
+          last_name: row.last_name,
+          gender: row.gender
+        };
+      }
+    });
+
+    res.json({ success: true, schedule: scheduleObj, section: sectionInfo, teacher: teacherInfo });
+  });
 });
 
 // Get conflicts

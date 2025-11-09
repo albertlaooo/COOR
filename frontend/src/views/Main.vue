@@ -37,7 +37,8 @@ const tabs = [
 
 function logout() {
   // Save login
-  localStorage.setItem('loggedIn', 'false');
+  localStorage.removeItem('token')
+  localStorage.removeItem('user')
   isSettingsModalVisible.value = false
   router.push('/')
 }
@@ -512,7 +513,8 @@ watch(confirmNewPassword, (newVal) => {
   gap: 10px;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
   border-right: 1px solid rgba(0, 0, 0, 0.2);
-  border-radius: 18px;
+  border-top-right-radius: 18px;
+  border-bottom-right-radius: 18px;
   user-select: none;
   z-index: 1;
 }

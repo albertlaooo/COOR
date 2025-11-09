@@ -4,6 +4,10 @@ export const store = reactive({
   sectionId: '', // Individual
   byCourseOrAll: '',
   bulkSectionId: [], // All
+
+  teacherId: '', // Individual
+  bulkTeacherId: [], // All
+
   exportDone: false     // PDF completion
 })
 
@@ -21,12 +25,26 @@ watch(
   }
 )
 
-
-// Watch the "All sections"
 watch(
   () => store.bulkSectionId,
   (newVal) => {
     console.log('Is section all export array updated:', newVal)
+  },
+  { deep: true } // Watch inside array changes too (e.g., push, splice)
+)
+
+
+watch(
+  () => store.teacherId,
+  (newVal, oldVal) => {
+    console.log(`store.teacherId changed: ${oldVal} → ${newVal}`)
+  }
+)
+
+watch(
+  () => store.bulkTeacherId,
+  (newVal) => {
+    console.log('Is teacher all export array updated:', newVal)
   },
   { deep: true } // Watch inside array changes too (e.g., push, splice)
 )

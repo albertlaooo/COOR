@@ -20,15 +20,16 @@ let cooldownInterval = null
 
 // --- Restore cooldown if active ---
 onMounted(() => {
-  const loggedIn = localStorage.getItem('loggedIn') === 'true'
+  const token = localStorage.getItem('token') // check if user is logged in
   const rememberMeStored = localStorage.getItem('rememberMe') === 'true'
 
-  if (loggedIn) {
+  if (token) {
+    // user is already logged in, redirect to main
     router.push('/main/home')
   } else if (rememberMeStored) {
     rememberMe.value = true
-    username.value = localStorage.getItem('username')
-    password.value = localStorage.getItem('password')
+    username.value = localStorage.getItem('username') || ''
+    password.value = localStorage.getItem('password') || ''
   }
 
   // Check for saved cooldown timestamp
@@ -82,8 +83,9 @@ const signinBtn = async () => {
       if (res.data.success) {
         signinBtnText.value = 'Log in successfully.'
 
-        // Save login
-        localStorage.setItem('loggedIn', 'true')
+        // Save login status
+        localStorage.setItem('token', res.data.token) 
+        localStorage.setItem('user', JSON.stringify(res.data.user))
 
         if (rememberMe.value) {
           localStorage.setItem('rememberMe', 'true')

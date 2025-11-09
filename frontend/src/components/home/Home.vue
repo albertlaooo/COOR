@@ -497,6 +497,7 @@ async function fetchSchedulesAndCheckConflicts() {
 //#region SCHEDULE TODAY
 const schedules = ref([])
 const searchQuery = ref("")
+const activeDay = ref('')
 
 // Helper — convert minutes (e.g., 480) → "08:00 AM"
 function formatTime(minutes) {
@@ -510,6 +511,7 @@ function formatTime(minutes) {
 // Day mapping
 const days = ["Sun", "Mon", "Tue", "Wed", "Thurs", "Fri", "Sat"]
 const todayDayName = days[today.getDay()]
+activeDay.value = todayDayName
 
 // Fetch all schedules and filter today's
 async function fetchTodaySchedules() {
@@ -518,7 +520,7 @@ async function fetchTodaySchedules() {
     const all = res.data
 
     // Filter for today's day_of_week
-    schedules.value = all.filter(s => s.day_of_week === todayDayName)
+    schedules.value = all.filter(s => s.day_of_week === activeDay.value)
   } catch (err) {
     console.error("❌ Failed to fetch schedules:", err)
   }
@@ -571,6 +573,12 @@ const groupedSchedules = computed(() => {
 
   return sorted
 })
+
+async function dayCardClicked(day) {
+  activeDay.value = day
+  console.log(activeDay.value)
+  await fetchTodaySchedules()
+}
 
 //#endregion
 
@@ -876,17 +884,97 @@ onMounted(async () => {
                             </div>
 
                             <!-- Today's Schedule -->
-                            <div style="display: flex; flex-direction: column; min-width: 380px; height: 380px; overflow: hidden; max-width: 100%; padding: 20px 26px; background-color: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); gap: 12px;">
+                            <div class="todays-schedule-container">
                                 
-                                <p style="font-size: 20px;" class="paragraph--black-bold">Schedule Today</p>
+                                <p style="font-size: 20px; margin-bottom: 6px;" class="paragraph--black-bold">Schedule Today</p>
+
+                                <!-- Days -->
+                                <div style="display: flex; flex-direction: row; gap: 4px;">
+                                   <div class="day-card" 
+                                        :style="activeDay === 'Mon' ? { backgroundColor: 'var(--color-primary)' } : {}" 
+                                        @click="dayCardClicked('Mon')">
+                                        <p style="font-size: small;" 
+                                            :style="activeDay === 'Mon' ? { color: 'white' } : {}">
+                                            Mon
+                                        </p>
+                                    </div>
+
+                                    <div class="day-card" 
+                                        :style="activeDay === 'Tue' ? { backgroundColor: 'var(--color-primary)' } : {}" 
+                                        @click="dayCardClicked('Tue')">
+                                        <p style="font-size: small;" 
+                                            :style="activeDay === 'Tue' ? { color: 'white' } : {}">
+                                            Tue
+                                        </p>
+                                    </div>
+
+                                    <div class="day-card" 
+                                        :style="activeDay === 'Wed' ? { backgroundColor: 'var(--color-primary)' } : {}" 
+                                        @click="dayCardClicked('Wed')">
+                                        <p style="font-size: small;" 
+                                            :style="activeDay === 'Wed' ? { color: 'white' } : {}">
+                                            Wed
+                                        </p>
+                                    </div>
+
+                                    <div class="day-card" 
+                                        :style="activeDay === 'Thurs' ? { backgroundColor: 'var(--color-primary)' } : {}" 
+                                        @click="dayCardClicked('Thurs')">
+                                        <p style="font-size: small;" 
+                                            :style="activeDay === 'Thurs' ? { color: 'white' } : {}">
+                                            Thu
+                                        </p>
+                                    </div>
+
+                                    <div class="day-card" 
+                                        :style="activeDay === 'Fri' ? { backgroundColor: 'var(--color-primary)' } : {}" 
+                                        @click="dayCardClicked('Fri')">
+                                        <p style="font-size: small;" 
+                                            :style="activeDay === 'Fri' ? { color: 'white' } : {}">
+                                            Fri
+                                        </p>
+                                    </div>
+
+                                    <div class="day-card" 
+                                        :style="activeDay === 'Sat' ? { backgroundColor: 'var(--color-primary)' } : {}" 
+                                        @click="dayCardClicked('Sat')">
+                                        <p style="font-size: small;" 
+                                            :style="activeDay === 'Sat' ? { color: 'white' } : {}">
+                                            Sat
+                                        </p>
+                                    </div>
+
+                                    <div class="day-card" 
+                                        :style="activeDay === 'Sun' ? { backgroundColor: 'var(--color-primary)' } : {}" 
+                                        @click="dayCardClicked('Sun')">
+                                        <p style="font-size: small;" 
+                                            :style="activeDay === 'Sun' ? { color: 'white' } : {}">
+                                            Sun
+                                        </p>
+                                    </div>
+
+                                </div>
+
+                                <div style="position: relative; display: inline-block;">
+                                    <svg 
+                                        width="20" 
+                                        height="20" 
+                                        viewBox="0 0 22 22" 
+                                        fill="none" 
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        style="position: absolute; top: 50%; left: 15px; transform: translateY(-50%); pointer-events: none;"
+                                    >
+                                        <path d="M8.69175 16.529C10.5945 16.529 12.3917 15.8545 13.8219 14.6276L20.7744 21.5978C20.9031 21.7272 21.0727 21.7919 21.2417 21.7919C21.41 21.7919 21.5789 21.7279 21.7076 21.5992C21.9657 21.3418 21.9663 20.924 21.7089 20.6659L14.7506 13.6904C17.3556 10.5791 17.2038 5.9202 14.2853 2.99507C12.791 1.49687 10.8044 0.671875 8.69109 0.671875C6.57778 0.671875 4.59117 1.49687 3.09693 2.99507C0.0140752 6.08586 0.0140752 11.1157 3.09693 14.2065C4.59183 15.704 6.57843 16.529 8.69175 16.529ZM4.03215 3.92699C5.27691 2.67893 6.93153 1.99187 8.69175 1.99187C10.452 1.99187 12.1066 2.67893 13.3514 3.92699C15.9221 6.50429 15.9221 10.6973 13.3514 13.2746C12.1066 14.5226 10.452 15.2097 8.69175 15.2097C6.93153 15.2097 5.27691 14.5226 4.03215 13.2746C1.46211 10.6973 1.46211 6.50429 4.03215 3.92699Z" fill="#757070"/>
+                                    </svg>
+
+                                    <input 
+                                        v-model="searchQuery"
+                                        style="width: 100%; padding-left: 45px;"
+                                        placeholder="Search"
+                                    />
+                                </div>
                                 
-                                <input 
-                                    v-model="searchQuery"
-                                    style="width: 100%; padding-left: 15px; margin: 2px 0px;"
-                                    placeholder="Search"
-                                />
-                                
-                                <div style="display: flex; flex-direction: column; gap: 16px; overflow-y: auto; overflow-x: hidden;">
+                                <div style="display: flex; flex-direction: column; height: 100%; margin-top: 4px; gap: 16px; overflow-y: auto; overflow-x: hidden;">
                                     <template v-if="Object.keys(groupedSchedules).length > 0">
                                     <div
                                         v-for="(items, timeRange) in groupedSchedules"
@@ -906,7 +994,12 @@ onMounted(async () => {
                                     </div>
                                     </template>
 
-                                    <p v-else style="text-align: center; color: #7F8D9C; font-style: italic; margin-top: 115px;">No schedule today.</p>
+                                    <div v-else style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 100%;">
+                                        <svg v-show="activeDay === 'Sun'" width="3em" height="3em" viewBox="0 0 641 565" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                            <path d="M617.858 506.063H423.958C462.758 488.463 493.058 459.463 514.158 420.163C520.558 421.363 526.758 422.063 532.658 422.063C578.058 422.063 608.358 390.863 609.758 389.463C657.758 341.263 636.358 293.963 628.058 283.963C605.158 255.963 567.958 261.563 548.858 266.863V244.563C548.858 233.663 539.358 224.863 527.758 224.863H101.458C89.8582 224.863 80.3581 231.963 80.3581 244.563V275.063C84.2581 391.063 128.158 471.063 205.458 506.063H12.7582C0.0581522 506.063 -1.24185 518.663 0.758152 525.763C6.25815 544.963 46.7582 564.063 84.0582 564.963H546.458C589.058 563.463 625.758 537.263 628.758 520.963C630.058 514.863 627.158 506.063 617.858 506.063ZM611.058 297.963C611.258 298.263 635.158 332.863 593.958 374.263C593.658 374.563 564.858 404.163 523.858 399.663C536.958 368.463 545.058 331.863 547.858 290.263C557.558 286.763 593.158 275.963 611.058 297.963ZM102.258 246.763H526.958C526.958 246.763 526.658 278.963 526.558 281.263H102.558C102.458 279.163 102.258 246.763 102.258 246.763ZM103.858 299.563H525.358C517.658 384.463 483.158 479.263 371.158 500.063C370.958 500.063 352.558 502.463 314.658 502.463C277.258 502.463 258.858 500.163 258.758 500.163C146.058 479.163 111.458 384.263 103.858 299.563ZM546.258 546.863H84.4582C53.3582 545.963 28.4582 532.263 20.7582 524.363H605.458C595.358 533.263 573.058 545.863 546.258 546.863ZM298.258 189.863C307.658 196.563 319.058 185.963 310.258 176.163C307.758 173.963 286.658 153.863 305.858 129.063C331.158 96.3627 314.858 65.9627 302.658 54.5627C291.058 46.9627 283.158 60.9627 290.158 67.7627C292.458 70.0627 312.558 90.7627 291.458 117.863C267.358 149.063 285.358 178.563 298.258 189.863ZM348.358 123.763C340.158 135.163 352.458 142.363 360.358 137.463C373.258 126.163 391.258 96.6627 367.158 65.4627C346.158 38.2627 366.158 17.5627 368.458 15.3627C375.458 6.36274 367.158 -4.63726 355.958 2.06274C343.758 13.5627 327.458 43.8627 352.758 76.5627C372.058 101.463 350.858 121.563 348.358 123.763Z" fill="#7F8D9C"/>
+                                        </svg>
+                                        <p style="text-align: center; color: #7F8D9C; font-style: italic;">{{ activeDay === 'Sun' ? 'Sunday: Your Chill Day' : 'No schedule today' }}</p>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1328,6 +1421,38 @@ onMounted(async () => {
         z-index: 10;
         border-radius: 8px;
         pointer-events: none;
+    }
+
+    /* Schedule Today */
+    .todays-schedule-container {
+        display: flex; 
+        flex-direction: column; 
+        min-width: 380px; 
+        height: 420px; 
+        overflow: hidden; 
+        max-width: 100%; 
+        padding: 20px 26px; 
+        background-color: white; 
+        border-radius: 12px; 
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); 
+        gap: 12px;
+    }
+
+    .day-card {
+        padding: 6px 0px; 
+        width: 50px; 
+        border: 1px solid var(--color-primary);
+        border-radius: 4px; 
+        text-align: center;
+    }
+
+    .day-card > p {
+        color: var(--color-primary);
+    }
+
+    .day-card:hover {
+        background-color: var(--color-lightgray-hover);
+        transition: 0.1s ease-in-out;
     }
 
     /* Calendar */

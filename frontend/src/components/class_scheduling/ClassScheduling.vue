@@ -162,22 +162,26 @@ const updateScheduleStatus = async (sectionId, status) => {
   }
 }
 
-const fetchTeachers = async () => {
-try {
-    const res = await axios.get("http://localhost:3000/teachers")
+const fetchTeachersWithLatestSchedule = async () => {
+  try {
+    const res = await axios.get("http://localhost:3000/teachers/latest-schedule")
 
-    teachersDB.value = res.data.map(teacher => ({
-        teacher_id: teacher.teacher_id,
-        first_name: teacher.first_name,
-        last_name: teacher.last_name,
-        departments: teacher.departments,
-        subjects: teacher.subjects,
-        availability: teacher.availability
-    }));
+    const data = res.data
+    const teachers = data.teachers || []
 
-} catch (err) {
-    console.error("Error fetching teachers:", err)
-}
+    teachersDB.value = teachers.map(teacher => ({
+      teacher_id: teacher.teacher_id,
+      first_name: teacher.first_name,
+      last_name: teacher.last_name,
+      departments: teacher.departments,
+      subjects: teacher.subjects,
+      availability: teacher.availability
+    }))
+
+    console.log('Latest:', data.latest_semester, data.latest_academic_year)
+  } catch (err) {
+    console.error("Error fetching latest-schedule teachers:", err)
+  }
 }
 
 // Group sections by "A.Y. YEAR – Semester"
@@ -286,7 +290,7 @@ const filteredTeachers = computed(() => {
 onMounted(async () => {
   await schedulesNullCheck()
   await fetchSections()
-  await fetchTeachers()
+  await fetchTeachersWithLatestSchedule()
 })
 
 //#endregion
@@ -340,6 +344,12 @@ function exportToPDFConfirm() {
                 if (sec) {
                     sectionId = sec.section_id;
                 }
+                // Check if already selected
+                if (store.sectionId === sectionId) {
+                    alert("This section is already exported.");
+                    return;
+                }
+                
                 isExporting.value = true
                 store.sectionId = sec.section_id // update the store
             } else {
@@ -357,6 +367,7 @@ function exportToPDFConfirm() {
                 if (sec) {
                     courseId = sec.course_id;
                 }
+                
                 isExporting.value = true
                 store.byCourseOrAll = 'byCourse'
                     // Filter sections with the same course_name
@@ -387,8 +398,15 @@ function exportToPDFConfirm() {
                     return fullName === chooseTeacher.value.trim();
                 });
                 if (tch) teacherId = tch.teacher_id;
-                console.log({ teacherId });
-                toggleExportToPDFModal();
+
+                // Check if already selected
+                if (store.teacherId === teacherId) {
+                    alert("This section is already exported.");
+                    return;
+                }
+
+                isExporting.value = true
+                store.teacherId = teacherId
             } else {
                 showErrorInput.value = true;
 
@@ -398,7 +416,9 @@ function exportToPDFConfirm() {
                 return;
             }
         } else if (exportType.value === 'all') {
-            
+            isExporting.value = true
+            store.byCourseOrAll = 'all'
+            store.bulkTeacherId = filteredTeachers.value.map(tchrs => tchrs.teacher_id)
         }
         
     }
@@ -684,16 +704,23 @@ watch(
                                 placeholder="Search course here.."
                                 :class="{ 'error-input-border': showErrorInput && !isChooseCourseOk }"></input>
 
-                                <!-- Dropdown suggestions -->
-                                <div v-if="chooseCourseInputFocused && filteredCompletedSectionsByCourse.length" 
-                                    class="dropdown"> 
-
+                                <div v-if="chooseCourseInputFocused" class="dropdown" style="z-index: 2;">
+                                    <!-- Dropdown suggestions -->
                                     <div v-for="sec in filteredCompletedSectionsByCourse" 
                                         class="dropdown-item"
                                         @click="selectCourse(sec)">
                                         {{ sec.course_name }}
                                     </div>
+                                   
+                                    <!-- Show "No results" if empty -->
+                                    <div 
+                                    v-if="filteredCompletedSectionsByCourse.length === 0" 
+                                    class="dropdown-item no-result"
+                                    style="text-align: center; color: #7F8D9C; font-style: italic;">
+                                    -- No results --
+                                    </div>
                                 </div>
+                                
                             </div>
                         </div>
                         
@@ -712,17 +739,24 @@ watch(
                                     placeholder="Search sections here.."
                                     :class="{ 'error-input-border': showErrorInput && !isChooseSectionOk }"></input>
 
-                                    <!-- Dropdown suggestions -->
-                                    <div v-if="chooseSectionInputFocused && filteredCompletedSections.length" 
-                                        class="dropdown"> 
-
+                                    <div v-if="chooseSectionInputFocused" class="dropdown" style="z-index: 2;">
+                                        <!-- Dropdown suggestions -->
                                         <div v-for="sec in filteredCompletedSections" 
                                             :key="sec.section_id"
                                             class="dropdown-item"
                                             @click="selectSection(sec)">
                                             {{ sec.section_format }}
                                         </div>
+
+                                        <!-- Show "No results" if empty -->
+                                        <div 
+                                            v-if="filteredCompletedSections.length === 0" 
+                                            class="dropdown-item no-result"
+                                            style="text-align: center; color: #7F8D9C; font-style: italic;">
+                                            -- No results --
+                                        </div>
                                     </div>
+                                    
                                 </div>
                             </div>
 
@@ -736,17 +770,24 @@ watch(
                                     placeholder="Search teacher here.."
                                     :class="{ 'error-input-border': showErrorInput && !isChooseTeacherOk }"></input>
 
-                                    <!-- Dropdown suggestions -->
-                                    <div v-if="chooseTeacherInputFocused && filteredTeachers.length" 
-                                        class="dropdown"> 
-
+                                    <div v-if="chooseTeacherInputFocused" class="dropdown" style="z-index: 2;">
+                                        <!-- Dropdown suggestions -->
                                         <div v-for="tch in filteredTeachers" 
                                             :key="tch.teacher_id"
                                             class="dropdown-item"
                                             @click="selectTeacher(tch)">
                                             {{ tch.last_name + ', ' + tch.first_name }}
                                         </div>
+
+                                        <!-- Show "No results" if empty -->
+                                        <div 
+                                            v-if="filteredTeachers.length === 0" 
+                                            class="dropdown-item no-result"
+                                            style="text-align: center; color: #7F8D9C; font-style: italic;">
+                                            -- No results --
+                                        </div>
                                     </div>
+
                                 </div>
                             </div>
                         </div>

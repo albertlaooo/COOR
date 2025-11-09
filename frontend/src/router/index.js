@@ -25,6 +25,7 @@ const routes = [
   { 
     path: '/main',
     component: Main,
+    meta: { requiresAuth: true },
     children: [
       { path: 'home', name: 'Home', component: Home, meta: { title: 'COOR | Home' } },
 
@@ -100,7 +101,16 @@ const router = createRouter({
 
 router.beforeEach((to, from, next) => {
   document.title = to.meta.title || 'COOR'
-  next()
+  const token = localStorage.getItem('token') // check token
+
+  // check if any matched route requires auth
+  const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
+
+  if (requiresAuth && !token) {
+    next('/') // redirect to login
+  } else {
+    next()
+  }
 })
 
 export default router
