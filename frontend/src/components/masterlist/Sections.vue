@@ -24,6 +24,8 @@ const sortOptionArchived = ref("latest")
 
 const activeTab = ref("active") // default active
 const moveUpConfirmation = ref("note") // default note
+
+const addSectionMessage = ref('')
 //#endregion
 
 //#region 📘 FETCH SECTIONS
@@ -541,6 +543,8 @@ const courseExists = computed(() =>
 )
 
 const sectionConfirm = async () => {
+    addSectionMessage.value = ""; // reset previous error
+
     if (
         course.value &&
         courseExists.value &&
@@ -548,14 +552,14 @@ const sectionConfirm = async () => {
         semester.value &&
         academicYear.value &&
         studentsCount.value !== 0
-        ) {
+    ) {
         try {
             const selectedCourse = coursesDB.value.find(
                 crse => crse.course_name.toLowerCase() === course.value.toLowerCase().trim()
             );
 
             const res = await axios.post("http://localhost:3000/add-section", {
-                course_id: selectedCourse.course_id,   // NEW
+                course_id: selectedCourse.course_id,
                 course_name: course.value,
                 year: year.value,
                 semester: semester.value,
@@ -567,20 +571,32 @@ const sectionConfirm = async () => {
 
             if (res.data.success) {
                 console.log("Section added successfully!");
+                fetchSections();
+                toggleSectionModal();
             } else {
-                console.log(res.data.message || "Failed to add section.");
+                addSectionMessage.value = res.data.message || "Failed to add section.";
+                showErrorInput.value = false;
+                setTimeout(() => { showErrorInput.value = true }, 0);
             }
         } catch (err) {
-            console.error(err);
+            if (err.response && err.response.status === 409) {
+                addSectionMessage.value = err.response.data.message;
+                showErrorInput.value = false;
+                setTimeout(() => { showErrorInput.value = true }, 0);
+            } else {
+                console.error(err);
+                addSectionMessage.value = "An unexpected error occurred. Please try again.";
+                showErrorInput.value = false;
+                setTimeout(() => { showErrorInput.value = true }, 0);
+            }
         }
-
-        fetchSections();
-        toggleSectionModal();
     } else {
         showErrorInput.value = false;
         setTimeout(() => { showErrorInput.value = true }, 0);
+        addSectionMessage.value = "Please fill in all fields.";
     }
-}
+};
+
 
 // Auto-generate section format
 watch([course, year, semester, coursesDB], () => {
@@ -1095,7 +1111,10 @@ async function confirmDelete() {
 
                             <div>
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Academic Year</p>
-                                <select v-model="academicYear" :disabled="isDeleteSectionBtnVisible" style="width: 100%;" :class="{ 'error-input-border': showErrorInput && academicYear.trim() === '' }">
+                                <select v-model="academicYear" 
+                                :disabled="isDeleteSectionBtnVisible" 
+                                style="width: 100%;" 
+                                :class="{ 'error-input-border': showErrorInput && academicYear.trim() === '' }">
                                     <option 
                                         v-for="academicYear in academicYears" 
                                         :key="academicYear.value" 
@@ -1109,11 +1128,9 @@ async function confirmDelete() {
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">Students Count</p>
                                 <input :value="studentsCount" :disabled="isDeleteSectionBtnVisible" @input="handleStudentCountInput" inputmode="numeric" pattern="[0-9]*" :class="{ 'error-input-border': showErrorInput && studentsCount === 0 }"></input>
                             </div>
-
-
-
+                            
                         </div>
-                        
+                        <label v-show="showErrorInput" style="color: red; font-size: 0.95rem; margin-right: auto;">{{ addSectionMessage }}</label>
                     </div>
 
                         <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">

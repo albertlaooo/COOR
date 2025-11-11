@@ -13,6 +13,7 @@
     const subject = ref('')
 
     const isVisibleDeleteModal = ref(false)
+    const addTeacherMessage = ref('')
 
     //////////////////////// DEPARTMENT /////////////////////////
     // List of departments from DB (RAW)
@@ -377,13 +378,19 @@
                     console.log(resAvail.data.message);
 
                     fetchTeachers();
+                    isVisibleTeacherModal.value = !isVisibleTeacherModal.value;
+                    resetInputs();
                     
                 } catch (error) {
-                    console.error("Error:", error);
-                    console.log("Failed to add teacher.");
+                    if (error.response && error.response.status === 409) {
+                        // 🔸 Duplicate teacher found
+                        showErrorInput.value = true
+                        addTeacherMessage.value = error.response.data.message
+                    } else {
+                        console.error("Error:", error);
+                        alert("Failed to add teacher.");
+                    }
                 }
-                isVisibleTeacherModal.value = !isVisibleTeacherModal.value;
-                resetInputs();
             }
 
             else if(teacherHandler.value === 'update'){
@@ -436,8 +443,14 @@
                 // Reset Inputs
                 resetInputs()
                 } catch (error) {
-                    console.error("Error:", error);
-                    alert("Failed to update teacher.");
+                    if (error.response && error.response.status === 409) {
+                        // 🔸 Duplicate teacher found
+                        showErrorInput.value = true
+                        addTeacherMessage.value = error.response.data.message
+                    } else {
+                        console.error("Error:", error);
+                        alert("Failed to add teacher.");
+                    }
                 }
             }
         }
@@ -723,7 +736,7 @@
                         <!-- Left section -->
                         <div style="display: flex; flex-direction: column; gap: 14px; flex: 1">
 
-                            <div style="display: flex; flex-direction: column; gap: 15px;">
+                            <div style="display: flex; flex-direction: column; gap: 0px;">
                                 <p class="paragraph--black-bold" style="line-height: 1.8;">First Name</p>
                                 <input v-model="firstName" :class="{ 'error-input-border': showErrorInput && firstName.trim() === '' }"></input>
                             </div>
@@ -877,6 +890,8 @@
                                 </svg>
                                 <p style="color: red;">Please select at least one day.</p>
                             </div>
+
+                            <label v-show="showErrorInput" style="color: red; font-size: 0.95rem; margin-right: auto; margin-top: 4px;">{{ addTeacherMessage }}</label>
                             
                         </div>
                     </div>

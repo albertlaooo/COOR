@@ -428,7 +428,7 @@ app.put("/update-note/:id", (req, res) => {
 /*////////////////////////////////////////////////////////////////////////
 /////////////////////////  TEACHER  //////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////*/ 
-// Insert Teacher
+// ADD teacher
 app.post("/add-teacher", (req, res) => {
   const { first_name, last_name, gender } = req.body;
 
@@ -439,24 +439,47 @@ app.post("/add-teacher", (req, res) => {
     });
   }
 
-  const sql = `
-    INSERT INTO Teachers (first_name, last_name, gender)
-    VALUES (?, ?, ?)
+  // 🔹 Check if teacher already exists (case-insensitive)
+  const checkSql = `
+    SELECT * FROM Teachers 
+    WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
   `;
 
-  db.run(sql, [first_name, last_name, gender], function (err) {
+  db.get(checkSql, [first_name, last_name], (err, row) => {
     if (err) {
-      console.error("Error inserting teacher:", err.message);
+      console.error("Error checking teacher:", err.message);
       return res.status(500).json({ success: false, message: "Database error" });
     }
 
-    res.json({
-      success: true,
-      message: "Teacher added successfully",
-      teacher_id: this.lastID
+    if (row) {
+      // 🔸 Already exists
+      return res.status(409).json({
+        success: false,
+        message: "Teacher already exists."
+      });
+    }
+
+    // 🔹 If not found, proceed with insert
+    const insertSql = `
+      INSERT INTO Teachers (first_name, last_name, gender)
+      VALUES (?, ?, ?)
+    `;
+
+    db.run(insertSql, [first_name, last_name, gender], function (err) {
+      if (err) {
+        console.error("Error inserting teacher:", err.message);
+        return res.status(500).json({ success: false, message: "Database error" });
+      }
+
+      res.json({
+        success: true,
+        message: "Teacher added successfully",
+        teacher_id: this.lastID
+      });
     });
   });
 });
+
 
 // READ all teachers (with departments, subjects, and availability)
 app.get("/teachers", (req, res) => {
@@ -622,21 +645,60 @@ app.put("/update-teacher/:id", (req, res) => {
   const { first_name, last_name, gender } = req.body;
 
   if (!first_name || !last_name || !gender) {
-    return res.status(400).json({ error: "Missing required fields" });
+    return res.status(400).json({ 
+      success: false, 
+      message: "Missing required fields" 
+    });
   }
 
-  const sql = `
-    UPDATE Teachers
-    SET first_name = ?, last_name = ?, gender = ?
-    WHERE teacher_id = ?
+  // 🔹 Check if another teacher with the same name exists (case-insensitive)
+  const checkSql = `
+    SELECT * FROM Teachers 
+    WHERE LOWER(first_name) = LOWER(?) 
+      AND LOWER(last_name) = LOWER(?) 
+      AND teacher_id != ?
   `;
 
-  db.run(sql, [first_name, last_name, gender, id], function (err) {
+  db.get(checkSql, [first_name, last_name, id], (err, existingTeacher) => {
     if (err) {
-      return res.status(500).json({ error: err.message });
+      console.error("Error checking duplicate teacher:", err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
     }
 
-    res.json({ updated: this.changes });
+    if (existingTeacher) {
+      // 🔸 Duplicate found
+      return res.status(409).json({
+        success: false,
+        message: "Another teacher with this name already exists."
+      });
+    }
+
+    // 🔹 Proceed with update if no duplicate
+    const updateSql = `
+      UPDATE Teachers
+      SET first_name = ?, last_name = ?, gender = ?
+      WHERE teacher_id = ?
+    `;
+
+    db.run(updateSql, [first_name, last_name, gender, id], function (err) {
+      if (err) {
+        console.error("Error updating teacher:", err.message);
+        return res.status(500).json({ success: false, message: "Database error" });
+      }
+
+      if (this.changes === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Teacher not found or no changes made."
+        });
+      }
+
+      res.json({
+        success: true,
+        message: "Teacher updated successfully.",
+        updated: this.changes
+      });
+    });
   });
 });
 
@@ -909,7 +971,7 @@ app.post("/add-section", (req, res) => {
     student_count,
     academic_year,
     section_format,
-    schedule_status, // 🆕 Added field
+    schedule_status,
   } = req.body;
 
   if (
@@ -926,42 +988,70 @@ app.post("/add-section", (req, res) => {
     });
   }
 
-  const sql = `
-    INSERT INTO Sections (
-      course_id, course_name, year, semester, student_count,
-      academic_year, section_format, schedule_status
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  // Check if section_format for the same academic_year and semester already exists
+  const checkSql = `
+    SELECT * FROM Sections
+    WHERE section_format = ? AND academic_year = ? AND semester = ?
   `;
 
-  db.run(
-    sql,
-    [
-      course_id,
-      course_name,
-      year,
-      semester,
-      student_count || 0,
-      academic_year,
-      section_format,
-      schedule_status || "Pending", // 🆕 Default value if not provided
-    ],
-    function (err) {
-      if (err) {
-        console.error("Error inserting section:", err.message);
-        return res.status(500).json({
-          success: false,
-          message: "Database error",
-          error: err.message,
-        });
-      }
-      res.json({
-        success: true,
-        message: "Section added successfully",
-        section_id: this.lastID,
+  db.get(checkSql, [section_format, academic_year, semester], (err, row) => {
+    if (err) {
+      console.error("Error checking section:", err.message);
+      return res.status(500).json({
+        success: false,
+        message: "Database error",
+        error: err.message,
       });
     }
-  );
+
+    if (row) {
+      // Convert semester number to string
+      const semesterName = semester === 1 ? "Semester 1" : semester === 2 ? "Semester 2" : `Semester ${semester}`;
+
+      return res.status(409).json({
+        success: false,
+        message: `Section "${section_format}" for ${semesterName}, ${academic_year} already exists`,
+      });
+    }
+
+    // Insert new section
+    const sql = `
+      INSERT INTO Sections (
+        course_id, course_name, year, semester, student_count,
+        academic_year, section_format, schedule_status
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    db.run(
+      sql,
+      [
+        course_id,
+        course_name,
+        year,
+        semester,
+        student_count || 0,
+        academic_year,
+        section_format,
+        schedule_status || "Pending",
+      ],
+      function (err) {
+        if (err) {
+          console.error("Error inserting section:", err.message);
+          return res.status(500).json({
+            success: false,
+            message: "Database error",
+            error: err.message,
+          });
+        }
+        res.json({
+          success: true,
+          message: "Section added successfully",
+          section_id: this.lastID,
+        });
+      }
+    );
+  });
 });
 
 // READ all Sections
@@ -2077,6 +2167,27 @@ app.get("/get-all-schedules-with-details", (req, res) => {
     res.json(rows);
   });
 });
+
+// READ all schedules with section_format (For schedule conflicts on dashboard)
+app.get("/get-all-schedules-conflict", (req, res) => {
+  const query = `
+    SELECT 
+      sa.*, 
+      s.section_format
+    FROM ScheduleAssignments sa
+    LEFT JOIN Sections s ON sa.section_id = s.section_id
+  `
+
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error(err)
+      res.status(500).json({ error: "Database error" })
+      return
+    }
+    res.json(rows)
+  })
+})
+
 
 // Get schedule of section
 app.get("/get-schedule/:section_id", (req, res) => {

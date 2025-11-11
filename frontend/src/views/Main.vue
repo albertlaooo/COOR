@@ -34,6 +34,17 @@ const tabs = [
   { name: 'Masterlist', path: '/main/masterlist' },
   { name: 'Class Scheduling', path: '/main/class-scheduling' },
 ]
+const settingsLogOutModal = ref(false)
+const isVisibleLogOutModal = ref(false)
+function toggleLogOutModal() {
+  isVisibleLogOutModal.value = !isVisibleLogOutModal.value
+  isSettingsModalVisible.value = false
+
+  if(isVisibleLogOutModal.value === false && settingsLogOutModal.value === true){
+    settingsRotated.value = !settingsRotated.value
+    settingsLogOutModal.value = false
+  }
+}
 
 function logout() {
   // Save login
@@ -259,7 +270,7 @@ watch(confirmNewPassword, (newVal) => {
 
       <div class="divider" style="margin-right: 15px; margin-top: auto;" :style="{ marginLeft: !sidebarCollapsed ? '0px' : '15px' }"></div>
 
-      <div class="tab-btn" @click="logout" style="display: flex; align-items: center; gap: 12px; padding-left: 18px;">
+      <div class="tab-btn" @click="toggleLogOutModal()" style="display: flex; align-items: center; gap: 12px; padding-left: 18px;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M16 13V11H7V8L2 12L7 16V13H16Z" fill="#444141"/>
           <path d="M20 3H11C9.897 3 9 3.897 9 5V9H11V5H20V19H11V15H9V19C9 20.103 9.897 21 11 21H20C21.103 21 22 20.103 22 19V5C22 3.897 21.103 3 20 3Z" fill="#444141"/>
@@ -288,13 +299,13 @@ watch(confirmNewPassword, (newVal) => {
               <label>Change Password</label>
             </div>
             <div class="divider" style="margin: 0 12px; margin-top: 4px; margin-bottom: 4px;"></div>
-            <div @click="logout()" class="settings-btn-modal">
+            <div @click="toggleLogOutModal(); settingsLogOutModal = true" class="settings-btn-modal">
               <label>Log Out</label>
             </div>
           </div>
         </transition>
 
-          <!-- Change Password Modal -->
+        <!-- Change Password Modal -->
         <transition name="fade">
           <div v-show="isChangePasswordModalVisible" class="modal" style="z-index: 3;" @click.self="toggleChangePasswordModal()">
             <div class="change-password-modal-content">
@@ -409,7 +420,20 @@ watch(confirmNewPassword, (newVal) => {
           </div>
         </transition>
 
+        <!-- Log out confirmation -->
+        <transition name="fade">
+            <div v-show="isVisibleLogOutModal" class="modal" style="z-index: 2;" @click.self="toggleLogOutModal()">
+               <div class="logout-btn-modal-content">
+                    <h3 style="font-size: 1.3rem; line-height: 0; margin: 12px 0; align-self: flex-start;">Confirm Logout</h3>
 
+                    <p style="align-self: flex-start;">Are you sure you want to log out?</p>
+                    <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto; margin-top: 8px;">
+                        <button @click="toggleLogOutModal()" style="background-color: transparent; border: 1px solid black; color: black;">Cancel</button>
+                        <button class="delete-btn" @click="logout()">Log Out</button>
+                    </div>
+               </div>
+            </div>
+        </transition>
 
       </header>
 
@@ -556,5 +580,26 @@ watch(confirmNewPassword, (newVal) => {
   padding-left: 55px;
   padding-right: 55px;
   overflow-y: auto;
+}
+
+/* =============================
+    Log out confirmation MODAL
+============================= */
+.logout-btn-modal-content {
+    display: flex;
+    flex-direction: column;
+    background-color: white;
+    height: auto;
+    max-height: 90vh;
+    align-items: center;
+    padding-top: 27px;
+    padding-bottom: 27px;
+    padding-left: 23px; 
+    padding-right: 23px; 
+    width: 380px;
+    box-shadow: -2px 0 8px rgba(0,0,0,0.2);
+    border-radius: 6px;
+    gap: 20px;
+    overflow-y: auto;
 }
 </style>

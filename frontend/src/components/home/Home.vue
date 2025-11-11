@@ -383,7 +383,7 @@ const schedulesNullCheck = async () => {
         )
       } catch (err) {
         console.error(`Error updating schedule status for section ${sectionId}:`, err)
-        alert("Error saving data for section " + sectionId)
+        alert("Error saving status data for section " + sectionId)
       }
 
       // f) Log null fields and collect null section IDs
@@ -436,15 +436,17 @@ async function countUnassignedSections() {
 //#endregion
 
 //#region CONFLICT CHECKER
+const isVisibleScheduleConflictsModal = ref(false)
 const conflictCount = ref(0)
+const conflicts = ref([])
 
 async function fetchSchedulesAndCheckConflicts() {
   try {
-    const res = await axios.get('http://localhost:3000/get-all-schedules')
+    const res = await axios.get('http://localhost:3000/get-all-schedules-conflict')
     const schedules = res.data
 
     let count = 0
-    const conflicts = []
+    const foundConflicts = []
 
     for (let i = 0; i < schedules.length; i++) {
       for (let j = i + 1; j < schedules.length; j++) {
@@ -463,27 +465,30 @@ async function fetchSchedulesAndCheckConflicts() {
 
           if (overlap && (sameTeacher || sameRoom || sameSection)) {
             count++
-            conflicts.push({
-              a_id: a.schedule_assignment_id,
-              b_id: b.schedule_assignment_id,
-              reason: sameTeacher
+            foundConflicts.push({
+                a_id: a.schedule_assignment_id,
+                b_id: b.schedule_assignment_id,
+                a_section: a.section_format,
+                b_section: b.section_format,
+                reason: sameTeacher
                 ? 'Same teacher'
                 : sameRoom
                 ? 'Same room'
                 : 'Same section',
-              day: a.day_of_week,
-              overlap: `${a.start_time}-${a.end_time} & ${b.start_time}-${b.end_time}`
+                day: a.day_of_week,
+                overlap: `${toHHMM(a.start_time)}-${toHHMM(a.end_time)} & ${toHHMM(b.start_time)}-${toHHMM(b.end_time)}`
             })
-          }
+            }
         }
       }
     }
 
     conflictCount.value = count
+    conflicts.value = foundConflicts
 
-    if (conflicts.length > 0) {
+    if (foundConflicts.length > 0) {
       console.log(`🟥 ${count} conflict(s) found:`)
-      console.table(conflicts)
+      console.table(foundConflicts)
     } else {
       console.log('✅ No conflicts found.')
     }
@@ -491,6 +496,22 @@ async function fetchSchedulesAndCheckConflicts() {
     console.error('Error fetching schedules:', err)
   }
 }
+
+function toggleScheduleConflictsModal() {
+  isVisibleScheduleConflictsModal.value = !isVisibleScheduleConflictsModal.value
+}
+
+// 🔹 Converts minutes → "HH:MM" (e.g., 420 → "07:00")
+function toHHMM(minutes) {
+  const hours = Math.floor(minutes / 60)
+  const mins = minutes % 60
+
+  const formattedHours = hours % 12 === 0 ? 12 : hours % 12
+  const formattedMins = mins.toString().padStart(2, '0')
+
+  return `${formattedHours}:${formattedMins}`
+}
+
 
 //#endregion
 
@@ -728,7 +749,7 @@ onMounted(async () => {
 
             <div style="display: flex; flex-direction: column;">
                 <h1>Dashboard</h1>
-                <p class="paragraph--gray">Simplifying your daily workflow.</p>
+                <p class="paragraph--gray">Simplify your daily workflow.</p>
             </div>
         </header>
 
@@ -836,7 +857,7 @@ onMounted(async () => {
                                 <div
                                     class="schedule-conflicts"
                                     :class="['schedule-conflicts', { 'has-conflict': conflictCount > 0 }]"
-                                >
+                                    @click="toggleScheduleConflictsModal">
                                     <!-- Overlay for blurring -->
                                     <div v-if="isScheduleConflictsFetching" class="overlay">
                                         <span>Gathering Data...</span>
@@ -998,7 +1019,7 @@ onMounted(async () => {
                                         <svg v-show="activeDay === 'Sun'" width="3em" height="3em" viewBox="0 0 641 565" fill="none" xmlns="http://www.w3.org/2000/svg">
                                             <path d="M617.858 506.063H423.958C462.758 488.463 493.058 459.463 514.158 420.163C520.558 421.363 526.758 422.063 532.658 422.063C578.058 422.063 608.358 390.863 609.758 389.463C657.758 341.263 636.358 293.963 628.058 283.963C605.158 255.963 567.958 261.563 548.858 266.863V244.563C548.858 233.663 539.358 224.863 527.758 224.863H101.458C89.8582 224.863 80.3581 231.963 80.3581 244.563V275.063C84.2581 391.063 128.158 471.063 205.458 506.063H12.7582C0.0581522 506.063 -1.24185 518.663 0.758152 525.763C6.25815 544.963 46.7582 564.063 84.0582 564.963H546.458C589.058 563.463 625.758 537.263 628.758 520.963C630.058 514.863 627.158 506.063 617.858 506.063ZM611.058 297.963C611.258 298.263 635.158 332.863 593.958 374.263C593.658 374.563 564.858 404.163 523.858 399.663C536.958 368.463 545.058 331.863 547.858 290.263C557.558 286.763 593.158 275.963 611.058 297.963ZM102.258 246.763H526.958C526.958 246.763 526.658 278.963 526.558 281.263H102.558C102.458 279.163 102.258 246.763 102.258 246.763ZM103.858 299.563H525.358C517.658 384.463 483.158 479.263 371.158 500.063C370.958 500.063 352.558 502.463 314.658 502.463C277.258 502.463 258.858 500.163 258.758 500.163C146.058 479.163 111.458 384.263 103.858 299.563ZM546.258 546.863H84.4582C53.3582 545.963 28.4582 532.263 20.7582 524.363H605.458C595.358 533.263 573.058 545.863 546.258 546.863ZM298.258 189.863C307.658 196.563 319.058 185.963 310.258 176.163C307.758 173.963 286.658 153.863 305.858 129.063C331.158 96.3627 314.858 65.9627 302.658 54.5627C291.058 46.9627 283.158 60.9627 290.158 67.7627C292.458 70.0627 312.558 90.7627 291.458 117.863C267.358 149.063 285.358 178.563 298.258 189.863ZM348.358 123.763C340.158 135.163 352.458 142.363 360.358 137.463C373.258 126.163 391.258 96.6627 367.158 65.4627C346.158 38.2627 366.158 17.5627 368.458 15.3627C375.458 6.36274 367.158 -4.63726 355.958 2.06274C343.758 13.5627 327.458 43.8627 352.758 76.5627C372.058 101.463 350.858 121.563 348.358 123.763Z" fill="#7F8D9C"/>
                                         </svg>
-                                        <p style="text-align: center; color: #7F8D9C; font-style: italic;">{{ activeDay === 'Sun' ? 'Sunday: Your Chill Day' : 'No schedule today' }}</p>
+                                        <p style="text-align: center; color: #7F8D9C; font-style: italic;">{{ activeDay === 'Sun' ? 'Chill Day' : 'No schedule today' }}</p>
                                     </div>
                                 </div>
                             </div>
@@ -1220,13 +1241,13 @@ onMounted(async () => {
                             <p class="paragraph--black-bold" style="line-height: 1.8; margin-bottom: 4px;">Note</p>
                             <textarea
                                 v-model="inputNote"
-                                maxlength="160"
+                                maxlength="500"
                                 style="height: 120px; width: 100%; min-height: 70px; max-height: 350px; max-width: 100%; padding: 8px; margin-bottom: 6px; border-radius: 6px; resize: vertical; box-sizing: border-box; background-color: #ffffff; border: 1px solid var(--color-border); color: black; font-family: var(--font-inter);"
                                 :class="{ 'error-input-border': showErrorInput && !isInputNoteOk }">
                             </textarea>
                             <div style="display: flex; flex-direction: row;">
                                 <label v-show="showErrorInput && !isInputNoteOk" style="color: red; font-size: 0.95rem; margin-right: auto;">{{ errorMessage }}</label>
-                                <small style="margin-left: auto; color: gray;">{{ inputNote.length }}/160</small>
+                                <small style="margin-left: auto; color: gray;">{{ inputNote.length }}/500</small>
                             </div>
                         </div>
                     </div>
@@ -1258,6 +1279,58 @@ onMounted(async () => {
                     </div>
                 </div>
             </div>
+        </transition>
+
+        <!-- Schedule Conflicts Modal -->
+        <transition name="fade">
+        <div
+            v-show="isVisibleScheduleConflictsModal"
+            class="modal"
+            @click.self="toggleScheduleConflictsModal()"
+        >
+            <div class="modal-content-schedule-conflicts">
+            <h2 style="align-self: flex-start; line-height: 0; margin: 12px 0px;">
+                Conflict Logs
+            </h2>
+
+            <div style="width: 100%;">
+                <table class="conflict-table">
+                <thead>
+                    <tr>
+                    <th>#</th>
+                    <th>Section A</th>
+                    <th>Section B</th>
+                    <th>Reason</th>
+                    <th>Day</th>
+                    <th>Overlap</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-if="conflicts.length === 0">
+                    <td colspan="6" style="text-align: center; color: #7F8D9C; font-style: italic;">
+                        No conflicts.
+                    </td>
+                    </tr>
+                    <tr v-else v-for="(conflict, index) in conflicts" :key="index">
+                    <td>{{ index + 1 }}</td>
+                    <td>{{ conflict.a_section }}</td>
+                    <td>{{ conflict.b_section }}</td>
+                    <td>{{ conflict.reason }}</td>
+                    <td>{{ conflict.day }}</td>
+                    <td>{{ conflict.overlap }}</td>
+                    </tr>
+                </tbody>
+                </table>
+            </div>
+
+            <button
+                @click="toggleScheduleConflictsModal()"
+                class="cancelBtn"
+                style="align-self: flex-end; margin-top: auto;">
+                Close
+            </button>
+            </div>
+        </div>
         </transition>
     </div>
 </template>
@@ -1423,6 +1496,24 @@ onMounted(async () => {
         pointer-events: none;
     }
 
+    .conflict-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 10px;
+    }
+
+    .conflict-table th,
+    .conflict-table td {
+        border: 1px solid #ccc;
+        padding: 6px 8px;
+        text-align: center;
+    }
+
+    .conflict-table th {
+        background-color: #f4f4f4;
+        font-weight: bold;
+    }
+
     /* Schedule Today */
     .todays-schedule-container {
         display: flex; 
@@ -1444,6 +1535,7 @@ onMounted(async () => {
         border: 1px solid var(--color-primary);
         border-radius: 4px; 
         text-align: center;
+        user-select: none;
     }
 
     .day-card > p {
@@ -1647,6 +1739,22 @@ onMounted(async () => {
         height: auto;
         align-items: center;
         width: 420px;
+        padding-top: 35px;
+        padding-bottom: 35px;
+        padding-left: 45px;
+        padding-right: 45px;
+        box-shadow: -2px 0 8px rgba(0,0,0,0.2);
+        border-radius: 6px;
+        gap: 20px;
+    }
+
+    .modal-content-schedule-conflicts {
+        display: flex;
+        flex-direction: column;
+        background-color: white;
+        height: 450px;
+        width: 850px;
+        align-items: center;
         padding-top: 35px;
         padding-bottom: 35px;
         padding-left: 45px;
