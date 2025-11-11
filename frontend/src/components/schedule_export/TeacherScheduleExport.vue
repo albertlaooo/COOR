@@ -23,6 +23,7 @@ watch(teacherIdToExport, async (newId) => {
     await fetchScheduleAssignments()
     await fetchTeacherSchedule()
     exportPDF()
+    store.teacherId = ''
   }
 })
 

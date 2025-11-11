@@ -25,6 +25,8 @@ watch(subjectIdToExport, async (newId) => {
     await fetchSectionScheduleAssignments()
     await fetchTimeColumn()
     exportPDF()
+    store.sectionId = ''
+    console.log(store.sectionId)
   }
 })
 

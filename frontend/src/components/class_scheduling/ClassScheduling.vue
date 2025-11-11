@@ -344,11 +344,6 @@ function exportToPDFConfirm() {
                 if (sec) {
                     sectionId = sec.section_id;
                 }
-                // Check if already selected
-                if (store.sectionId === sectionId) {
-                    alert("This section is already exported.");
-                    return;
-                }
                 
                 isExporting.value = true
                 store.sectionId = sec.section_id // update the store
@@ -398,12 +393,6 @@ function exportToPDFConfirm() {
                     return fullName === chooseTeacher.value.trim();
                 });
                 if (tch) teacherId = tch.teacher_id;
-
-                // Check if already selected
-                if (store.teacherId === teacherId) {
-                    alert("This section is already exported.");
-                    return;
-                }
 
                 isExporting.value = true
                 store.teacherId = teacherId
