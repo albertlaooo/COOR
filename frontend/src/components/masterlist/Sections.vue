@@ -6,7 +6,7 @@ import axios from "axios"
 //#region 🧭 ROUTER
 const router = useRouter()
 function backBtn() {
-    router.push(`/main/masterlist`)
+    router.back();
 }
 //#endregion
 
@@ -820,7 +820,7 @@ async function confirmDelete() {
                     :class="['navBtn', 'toggle-btn', { active: activeTab === 'archived' }]" 
                     @click="activeTab = 'archived'"
                     >
-                    <p>Archived</p>
+                    <p>Archived Sections</p>
                 </div>
                 
             </div>
@@ -879,25 +879,14 @@ async function confirmDelete() {
                         >
                         <!-- Header -->
                         <div
-                            style="display: flex; flex-direction: row; gap: 6px; align-items: center; margin-bottom: 10px;"
+                            style="display: flex; flex-direction: row; gap: 6px; align-items: center; margin-bottom: 14px;"
                         >
                             <h3 style="line-height: 0;">{{ groupKey }}</h3>
 
                             <!-- Toggle visibility -->
-                            <svg
-                            @click="toggleMoveUpModal(groupKey)"
-                            width="30"
-                            height="100%"
-                            viewBox="0 0 32 32"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                            style="cursor: pointer;"
-                            >
-                            <path
-                                d="M23.636 4C26.046 4 28 5.954 28 8.364V23.636C28 24.7934 27.5402 25.9034 26.7218 26.7218C25.9034 27.5402 24.7934 28 23.636 28H8.364C7.79091 28 7.22343 27.8871 6.69397 27.6678C6.1645 27.4485 5.68342 27.127 5.27819 26.7218C4.45978 25.9034 4 24.7934 4 23.636V8.364C4 5.954 5.954 4 8.364 4H23.636ZM16.006 9.454H15.996L15.982 9.456H15.956L15.93 9.458H15.916L15.892 9.462H15.874L15.854 9.466L15.834 9.47L15.82 9.474L15.792 9.48C15.6494 9.51464 15.5188 9.5872 15.414 9.69L11.876 13.152C11.7999 13.2263 11.7394 13.3151 11.6981 13.4132C11.6567 13.5113 11.6355 13.6166 11.6355 13.723C11.6355 13.8294 11.6567 13.9347 11.6981 14.0328C11.7394 14.1309 11.7999 14.2197 11.876 14.294C12.0326 14.4449 12.2415 14.5293 12.459 14.5293C12.6765 14.5293 12.8854 14.4449 13.042 14.294L15.17 12.212V21.738C15.1732 21.9541 15.2615 22.1602 15.4158 22.3115C15.5701 22.4628 15.7779 22.5471 15.994 22.546C16.2105 22.5476 16.4188 22.4636 16.5735 22.3122C16.7282 22.1608 16.8168 21.9544 16.82 21.738V12.202L18.958 14.294C19.1146 14.4449 19.3235 14.5293 19.541 14.5293C19.7585 14.5293 19.9674 14.4449 20.124 14.294C20.1998 14.2197 20.2601 14.131 20.3012 14.0331C20.3423 13.9353 20.3635 13.8302 20.3635 13.724C20.3635 13.6178 20.3423 13.5127 20.3012 13.4149C20.2601 13.317 20.1998 13.2283 20.124 13.154L16.588 9.688C16.4324 9.53614 16.2234 9.4514 16.006 9.452V9.454Z"
-                                fill="#0785D4"
-                            />
-                            </svg>
+                            
+
+                            <button @click="toggleMoveUpModal(groupKey)">Move Up</button>
                         </div>
 
                         <!-- Cards -->
@@ -987,7 +976,7 @@ async function confirmDelete() {
 
         <!-- Move Up / Archive Modal -->
         <transition name="fade" mode="out-in">
-            <div v-show="isVisibleMoveUpModal" class="modal" @click.self="!isMovingUp && cancelMoveUpBtn"> 
+            <div v-show="isVisibleMoveUpModal" class="modal" @click.self="cancelMoveUpBtn"> 
                 <div class="modal-content-archive">
 
                     <transition name="slide-left">
@@ -1007,7 +996,7 @@ async function confirmDelete() {
                                 <h2 style="line-height: 0;">Move Up</h2>
                             </div>
                             
-                            <p>Move <strong>{{ selectedGroupKey }}?</strong> This action will also archive it.</p>
+                            <p>Move all sections in <strong>{{ selectedGroupKey }}</strong> up by 1 semester? This will archive the current semester.</p>
 
                             <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto; margin-top: 4px;">
                                 <button @click="cancelMoveUpBtn" class="cancelBtn">Cancel</button>
@@ -1265,8 +1254,8 @@ async function confirmDelete() {
         display: flex;
         justify-content: center;
         align-items: center;
-        width: 90px;
-        height: 36px;
+        width: 160px;
+        height: 42px;
         user-select: none;
     }
 
@@ -1302,7 +1291,8 @@ async function confirmDelete() {
 
     .navBtn p {
         color: var(--color-primary);
-        font-size: 0.9rem;
+        font-size: 1rem;
+        font-weight: 600;
     }
 
     .card-container {

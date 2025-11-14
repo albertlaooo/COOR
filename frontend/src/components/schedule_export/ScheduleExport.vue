@@ -26,7 +26,6 @@ watch(subjectIdToExport, async (newId) => {
     await fetchTimeColumn()
     exportPDF()
     store.sectionId = ''
-    console.log(store.sectionId)
   }
 })
 

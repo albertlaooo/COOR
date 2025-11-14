@@ -68,6 +68,24 @@ db.serialize(() => {
     `);
 
     db.run(`
+        CREATE TABLE IF NOT EXISTS Notifications (
+            notif_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            image INTEGER,
+            message TEXT NOT NULL,
+            status INTEGER NOT NULL DEFAULT 0,
+            created_at DATETIME
+        );
+    `);
+
+    db.run(`
+        CREATE TABLE IF NOT EXISTS CalendarEvent (
+          event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_date TEXT NOT NULL,
+          event_name TEXT NOT NULL
+        );
+    `);
+
+    db.run(`
         CREATE TABLE IF NOT EXISTS Teachers (
           teacher_id INTEGER PRIMARY KEY AUTOINCREMENT,
           first_name TEXT NOT NULL,
@@ -424,6 +442,185 @@ app.put("/update-note/:id", (req, res) => {
     });
   });
 });
+
+/*////////////////////////////////////////////////////////////////////////
+/////////////////////////  Notifications  //////////////////////////////////////
+////////////////////////////////////////////////////////////////////////*/ 
+// ADD NOTIFICATION
+app.post("/add-notification", (req, res) => {
+  const { image, message } = req.body;
+
+  if (!message) {
+    return res.status(400).json({
+      success: false,
+      message: "Notification message is required",
+    });
+  }
+
+  const sql = `
+    INSERT INTO Notifications (image, message, created_at)
+    VALUES (?, ?, strftime('%Y-%m-%d %H:%M', 'now', '+8 hours'))
+  `;
+
+  db.run(sql, [image, message], function (err) {
+    if (err) {
+      console.error("❌ Error inserting notification:", err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+
+    res.json({
+      success: true,
+      message: "Notification added successfully",
+      notif_id: this.lastID,
+    });
+  });
+});
+
+// FETCH NOTIFICATIONS (delete older than 30 days first)
+app.get("/notifications", (req, res) => {
+  const deleteSql = `
+    DELETE FROM Notifications
+    WHERE CAST(
+      REPLACE(
+        SUBSTR(created_at, 1, INSTR(created_at, ' ') - 1), 
+        '-', 
+        ''
+      ) AS INTEGER
+    ) < CAST(strftime('%Y%m%d', 'now', '-30 days', '+8 hours') AS INTEGER)
+  `;
+
+  db.run(deleteSql, [], (delErr) => {
+    if (delErr) {
+      console.error("❌ Error deleting old notifications:", delErr.message);
+    }
+
+    const sql = `SELECT * FROM Notifications ORDER BY status ASC, created_at DESC`;
+    db.all(sql, [], (err, rows) => {
+      if (err) {
+        console.error("❌ Error fetching notifications:", err.message);
+        return res.status(500).json({ success: false, message: "Database error" });
+      }
+      res.json(rows);
+    });
+  });
+});
+
+// MARK ALL AS READ
+app.put("/notifications/mark-all-read", (req, res) => {
+  const sql = `UPDATE Notifications SET status = 1 WHERE status = 0`;
+  db.run(sql, function(err) {
+    if (err) {
+      console.error("❌ Error marking notifications as read:", err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+    res.json({ success: true, message: "All notifications marked as read" });
+  });
+});
+
+// MARK SINGLE NOTIFICATION AS READ
+app.put("/notifications/mark-read/:id", (req, res) => {
+  const notifId = req.params.id;
+  const sql = `UPDATE Notifications SET status = 1 WHERE notif_id = ?`;
+  
+  db.run(sql, [notifId], function(err) {
+    if (err) {
+      console.error("❌ Error marking notification as read:", err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+    // Check if any row was actually updated
+    if (this.changes === 0) {
+      return res.status(404).json({ success: false, message: "Notification not found" });
+    }
+    res.json({ success: true, message: "Notification marked as read" });
+  });
+});
+
+/*////////////////////////////////////////////////////////////////////////
+/////////////////////////  Calendar Event  //////////////////////////////
+////////////////////////////////////////////////////////////////////////*/ 
+// ADD EVENT
+app.post("/add-event", (req, res) => {
+  const { event_date, event_name } = req.body;
+
+  if (!event_date || !event_name) {
+    return res.status(400).json({
+      success: false,
+      message: "Event date and event name are required",
+    });
+  }
+
+  const sql = `
+    INSERT INTO CalendarEvent (event_date, event_name)
+    VALUES (?, ?)
+  `;
+
+  db.run(sql, [event_date, event_name], function (err) {
+    if (err) {
+      console.error("❌ Error inserting event:", err.message);
+      return res.status(500).json({
+        success: false,
+        message: "Database error",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Event added successfully",
+      event_id: this.lastID,
+    });
+  });
+});
+
+// READ EVENT
+app.get("/event", (req, res) => {
+  db.all("SELECT * FROM CalendarEvent", [], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json(rows);
+  });
+});
+
+// UPDATE EVENT NAME
+app.put("/update-event/:id", (req, res) => {
+  const { id } = req.params;
+  const { event_name } = req.body;
+
+  if (!event_name) {
+    return res.status(400).json({ success: false, message: "Event name is required" });
+  }
+
+  const sql = `
+    UPDATE CalendarEvent
+    SET event_name = ?
+    WHERE event_id = ?
+  `;
+
+  db.run(sql, [event_name, id], function (err) {
+    if (err) {
+      console.error("❌ Error updating event:", err.message);
+      return res.status(500).json({ success: false, message: "Database error" });
+    }
+
+    res.json({
+      success: true,
+      message: "Event name updated successfully",
+      updated: this.changes,
+    });
+  });
+});
+
+// DELETE EVENT
+app.delete("/delete-event/:id", (req, res) => {
+  const id = req.params.id;
+  db.run("DELETE FROM CalendarEvent WHERE event_id = ?", [id], function (err) {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ message: "Event deleted successfully" });
+  });
+});
+
 
 /*////////////////////////////////////////////////////////////////////////
 /////////////////////////  TEACHER  //////////////////////////////////////

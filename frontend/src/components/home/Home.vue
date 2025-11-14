@@ -2,6 +2,7 @@
 import { ref, onMounted, computed, watch } from 'vue'
 import axios from "axios";
 import router from '@/router';
+import { store } from '@/components/store.js'
 //#region FETCHING THE LATEST TERM FROM SECTIONS
 const latestTerm = ref('')
 async function fetchLatestTerm() {
@@ -74,6 +75,190 @@ const firstDay = computed(() =>
 
 // blank slots before the first day
 const blankDays = computed(() => Array(firstDay.value).fill(null));
+
+const events = ref([]);
+
+// Fetch all events with their names
+async function fetchEvents() {
+    try {
+        const res = await axios.get('http://localhost:3000/event');
+        // Keep the full object: { event_date, event_name }
+        events.value = res.data.map(e => ({
+            id: e.event_id,
+            date: e.event_date,
+            name: e.event_name
+        }));
+        console.log('Events loaded:', events.value);
+
+        // 🔔 Load current notifications from backend
+        const notifRes = await axios.get('http://localhost:3000/notifications');
+        const existingMessages = notifRes.data.map(n => n.message);
+
+        events.value.forEach(async (ev) => {
+            const today = new Date();
+            const eventDate = new Date(ev.date);
+
+            const formattedDay = new Date(ev.date).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+            });
+
+            const diffDays = Math.ceil((eventDate - today) / (1000 * 60 * 60 * 24));
+
+            // 3-DAY REMINDER
+            if (diffDays === 3) {
+                const message = `Reminder: <strong>${ev.name}</strong> is happening in 3 days (${formattedDay})`;
+
+                if (!existingMessages.includes(message)) {
+                    await axios.post("http://localhost:3000/add-notification", {
+                        image: 1,
+                        message
+                    });
+                    console.log("🔔 3-day reminder added");
+                    store.notification++;
+                }
+            }
+
+            // 1-DAY REMINDER
+            if (diffDays === 1) {
+                const message = `Reminder: <strong>${ev.name}</strong> is happening tomorrow (${formattedDay})`;
+
+                if (!existingMessages.includes(message)) {
+                    await axios.post("http://localhost:3000/add-notification", {
+                        image: 2,
+                        message
+                    });
+                    console.log("🔔 1-day reminder added");
+                    store.notification++;
+                }
+            }
+        });
+    } catch (err) {
+        console.error('Failed to load events:', err);
+    }
+}
+
+fetchEvents();
+
+// Check if a day has an event
+function hasEvent(day) {
+    const fullDate = `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return events.value.some(e => e.date === fullDate);
+}
+
+// Get event name by date
+function getEventName(day) {
+    const fullDate = `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const event = events.value.find(e => e.date === fullDate);
+    return event ? event.name : '';
+}
+
+// Modal states
+const isVisibleEventModal = ref(false);
+const isDeleteEventVisible = ref(false);
+const modalEventLabel = ref('');
+const eventDate = ref('');
+const inputEventName = ref('');
+
+// Open modal and prefill event if exists
+function toggleEventModal(day) {
+    modalEventLabel.value = hasEvent(day) ? 'Update Event' : 'Add Event';
+    isDeleteEventVisible.value = hasEvent(day) ? true : false;
+
+    if (day) {
+        const fullDate = new Date(currentYear.value, currentMonth.value, day);
+
+        // Format: YYYY-MM-DD
+        const formatted =
+            fullDate.getFullYear() +
+            "-" +
+            String(fullDate.getMonth() + 1).padStart(2, "0") +
+            "-" +
+            String(fullDate.getDate()).padStart(2, "0");
+
+        eventDate.value = formatted;
+        inputEventName.value = getEventName(day); // prefill if event exists
+    } else {
+        eventDate.value = '';
+        inputEventName.value = '';
+    }
+
+    showErrorInput.value = false;
+    isVisibleEventModal.value = !isVisibleEventModal.value;
+}
+
+// Confirm adding/updating event
+async function eventConfirm() {
+    const day = eventDate.value;
+    const eventName = inputEventName.value.trim();
+
+    if (eventName === '') {
+        showErrorInput.value = true;
+        return;
+    }
+
+    try {
+        // Check if event already exists for this day
+        const existingEvent = events.value.find(e => e.date === day);
+
+        if (existingEvent) {
+            // Update existing event
+            const res = await axios.put(`http://localhost:3000/update-event/${existingEvent.id}`, {
+                event_name: eventName
+            });
+
+            if (res.data.success) {
+                console.log("✅ Event updated:", res.data);
+                toggleEventModal('');
+                fetchEvents(); // refresh events
+            } else {
+                console.error("❌ Error updating event:", res.data.message);
+            }
+        } else {
+            // Add new event
+            const res = await axios.post("http://localhost:3000/add-event", {
+                event_date: day,
+                event_name: eventName
+            });
+
+            if (res.data.success) {
+                console.log("✅ Event added:", res.data);
+
+                const formattedDay = new Date(day).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+
+                // Add a notification
+                try {
+                    const notifRes = await axios.post("http://localhost:3000/add-notification", {
+                        image: 0,
+                        message: `New event added: <strong>${eventName}</strong> on ${formattedDay}`
+                    });
+
+                    if (notifRes.data.success) {
+                        console.log("🔔 Notification added:", notifRes.data);
+                        store.notification++
+                    } else {
+                        console.error("❌ Error adding notification:", notifRes.data.message);
+                    }
+                } catch (err) {
+                    console.error("❌ Notification request failed:", err);
+                }
+
+                toggleEventModal('');
+                fetchEvents(); // refresh events
+            } else {
+                console.error("❌ Error adding event:", res.data.message);
+            }
+        }
+    } catch (err) {
+        console.error("❌ Failed to save event:", err);
+    }
+}
+
 //#endregion
 
 //#region 🔄 MONTH NAVIGATION
@@ -269,39 +454,62 @@ watch(inputNote, (newVal) => {
 //#endregion
 
 //#region ❌ DELETE NOTE MODAL
-/////////////////////////////// DELETE NOTE MODAL ////////////////////////////
+/////////////////////////////// DELETE MODAL ////////////////////////////
 const isVisibleDeleteModal = ref(false)
-let noteToDelete = ref('')
+let itemToDelete = ref(null)
+let deleteType = ref('')
 
-// ✅ Delete note
-async function deleteNote(index) {
-  noteToDelete = notes.value[index];
-  if (!noteToDelete) return;
-
-  toggleDeleteModal()
+// ✅ Delete event
+function deleteEvent() {
+    const event = events.value.find(e => e.date === eventDate.value);
+    toggleDeleteModal('event', event);
 }
 
-function toggleDeleteModal() {
-    isVisibleDeleteModal.value = !isVisibleDeleteModal.value
+// ✅ Delete note
+function deleteNote(index) {
+    const note = notes.value[index];
+    if (!note) return;
+
+    toggleDeleteModal('note', note);
+}
+
+function toggleDeleteModal(type = '', item = null) {
+    deleteType.value = type;
+    itemToDelete.value = item;
+    isVisibleDeleteModal.value = !isVisibleDeleteModal.value;
 }
 
 async function confirmDelete() {
+    if (!itemToDelete.value) return;
+
     try {
-        const res = await axios.delete(
-        `http://localhost:3000/delete-note/${noteToDelete.note_id}`
-        );
-        if (res.data.success) {
-        console.log("🗑️ Note deleted:", noteToDelete.note);
-        await fetchNotes();
+        let url = '';
+        if (deleteType.value === 'note') {
+            url = `http://localhost:3000/delete-note/${itemToDelete.value.note_id}`;
+        } else if (deleteType.value === 'event') {
+            url = `http://localhost:3000/delete-event/${itemToDelete.value.id}`;
+        }
+
+        const res = await axios.delete(url);
+
+        if (res.data.success || res.data.message) {
+            console.log(`✅ ${deleteType.value} deleted:`, itemToDelete.value);
+            if (deleteType.value === 'note') await fetchNotes();
+            if (deleteType.value === 'event') {
+                fetchEvents();
+                toggleEventModal(''); // close event modal
+            }
         } else {
-        console.error("❌ Failed to delete note:", res.data.message);
+            console.error("❌ Failed to delete:", res.data.message);
         }
     } catch (err) {
-        console.error("❌ Error deleting note:", err);
+        console.error("❌ Error deleting item:", err);
     }
 
-    toggleDeleteModal()
+    toggleDeleteModal();
 }
+
+
 //#endregion
 
 //#region fade-up animation delay
@@ -1169,21 +1377,25 @@ onMounted(async () => {
 
                             <!-- Calendar Grid -->
                             <div class="days">
-                            <div v-for="day in dayNames" :key="day" class="day-name">{{ day }}</div>
+                                <div v-for="day in dayNames" :key="day" class="day-name">{{ day }}</div>
 
-                            <div
-                                v-for="(slot, index) in blankDays"
-                                :key="'b' + index"
-                            ></div>
+                                <div
+                                    v-for="(slot, index) in blankDays"
+                                    :key="'b' + index"
+                                ></div>
 
-                            <div
-                                v-for="day in totalDays"
-                                :key="day"
-                                class="number"
-                                :class="{ active: isToday(day) }"
-                            >
-                                {{ day }}
-                            </div>
+                                <div
+                                    v-for="day in totalDays"
+                                    :key="day"
+                                    class="number"
+                                    @click="toggleEventModal(day)"
+                                    :class="{
+                                        active: isToday(day)
+                                    }"
+                                >
+                                    {{ day }}
+                                    <span v-if="hasEvent(day)" class="event-line"></span>
+                                </div>
                             </div>
                         </div>
                     </transition>
@@ -1229,6 +1441,39 @@ onMounted(async () => {
             </div>
         </main>
 
+        <!-- Add Calendar Event Modal -->
+        <transition name="fade">
+            <div v-show="isVisibleEventModal" class="modal" style="z-index: 2;" @click.self="toggleEventModal()">
+               <div class="add-event-modal-content">
+                    <div style="display: flex; flex-direction: column; margin-right: auto; gap: 4px;">
+                        <h3 style="line-height: 0; margin: 10px 0; font-size: x-large;">{{ modalEventLabel }}</h3>
+                        <label>{{ eventDate }}</label>
+                    </div>
+                        
+                    <div style="display: flex; flex-direction: column; gap: 12px; width: 100%; margin-bottom: 20px;">
+                        <div>
+                            <p class="paragraph--black-bold" style="line-height: 1.8;">Event Name</p>
+                            <div style="position: relative; width: 100%;">
+                                <input v-model="inputEventName" :class="{ 'error-input-border': showErrorInput && inputEventName.trim() === '' }"></input>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div style="display: flex; flex-direction: row; width: 100%;">
+                      <button v-show="isDeleteEventVisible" @click="deleteEvent()" class="outlineBtn" style="font-size: 1.2rem; padding: 3px 6px;">
+                          <i class='bx bx-trash'></i>
+                      </button>
+                      <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
+                          <button @click="toggleEventModal()" class="cancelBtn">Cancel</button>
+                          <button @click="eventConfirm()">Confirm</button>
+                      </div>
+                    </div>
+
+               </div>
+            </div>
+        </transition>
+
         <!-- Add / Rename Note Modal -->
         <transition name="fade">
             <div v-show="isVisibleNoteModal" class="modal" @click.self="toggleNoteModal('cancel')">
@@ -1260,7 +1505,7 @@ onMounted(async () => {
             </div>
         </transition>
 
-        <!-- Delete Note Modal -->
+        <!-- Delete Modal -->
         <transition name="fade">
             <div v-show="isVisibleDeleteModal" class="modal" @click.self="toggleDeleteModal"> 
                 <div class="delete-modal-content">
@@ -1270,7 +1515,7 @@ onMounted(async () => {
                             <h3 style="line-height: 0; font-size: x-large; margin: 10px 0px;">Delete Confirmation</h3>
                         </div>
                         
-                        <p>Are you sure you want to delete this note?</p>
+                        <p>Are you sure you want to delete this?</p>
 
                         <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto; margin-top: 12px;">
                             <button @click="toggleDeleteModal" class="cancelBtn">Cancel</button>
@@ -1399,6 +1644,20 @@ onMounted(async () => {
         100% { left: 125%; }
     }
 
+    .add-event-modal-content {
+        display: flex;
+        flex-direction: column;
+        background-color: white;
+        height: auto;
+        max-height: 90vh;
+        align-items: center;
+        padding: 36px;
+        width: 450px;
+        box-shadow: -2px 0 8px rgba(0,0,0,0.2);
+        border-radius: 6px;
+        gap: 12px;
+        overflow-y: auto;
+    }
 
     .unassigned-sections {
         position: relative; /* important for overlay */
@@ -1571,6 +1830,7 @@ onMounted(async () => {
     }
 
     .days {
+    position: relative;
     display: grid;
     grid-template-columns: repeat(7, 1fr);
     gap: 5px;
@@ -1590,6 +1850,7 @@ onMounted(async () => {
     cursor: pointer;
     transition: 0.3s;
     color: black;
+    user-select: none;
     }
 
     .number:hover {
@@ -1604,6 +1865,17 @@ onMounted(async () => {
     .number.active:hover {
     background: var(--color-primary);
     color: white;
+    }
+
+    
+    .event-line {
+        position: absolute;
+        display: block;
+        width: 26px;
+        height: 3px;
+        background-color: orange;
+        margin-top: 10px;
+        border-radius: 2px;
     }
 
     .arrow {

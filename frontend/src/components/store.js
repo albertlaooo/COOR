@@ -8,7 +8,9 @@ export const store = reactive({
   teacherId: '', // Individual
   bulkTeacherId: [], // All
 
-  exportDone: false     // PDF completion
+  exportDone: false,     // PDF completion
+
+  notification: 0,
 })
 
 watch(
@@ -56,3 +58,11 @@ watch(
     console.log('PDF export done flag:', newVal)
   }
 )
+
+watch(
+  () => store.notification,
+  (newVal) => {
+    console.log('fetch notification')
+  }
+)
+

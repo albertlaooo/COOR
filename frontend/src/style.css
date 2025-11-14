@@ -39,6 +39,10 @@ body {
   font-family: var(--font-inter);
 }
 
+strong {
+  font-weight: 600;
+}
+
 h1 {
   font-size: 2rem;
   font-family: var(--font-archivo);

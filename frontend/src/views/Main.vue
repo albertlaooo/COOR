@@ -1,10 +1,21 @@
 <script setup>
 import { CanceledError } from 'axios'
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { store } from '@/components/store.js'
 import { useRouter } from 'vue-router'
 import axios from "axios"
 
 const router = useRouter()
+
+import newEventAdded from '@/assets/notification/0.svg'
+import event3DaysReminder from '@/assets/notification/1.svg'
+import event1DayReminder from '@/assets/notification/2.svg'
+
+const notificationImages = {
+  0: newEventAdded,
+  1: event3DaysReminder,
+  2: event1DayReminder
+}
 
 // Sidebar
 const sidebarBtnRotated = ref(false)
@@ -34,6 +45,101 @@ const tabs = [
   { name: 'Masterlist', path: '/main/masterlist' },
   { name: 'Class Scheduling', path: '/main/class-scheduling' },
 ]
+const isNotificationModalVisible = ref(false)
+const notifications = ref([]);
+
+// Fetch notifications from server
+async function fetchNotifications() {
+  try {
+    const res = await axios.get("http://localhost:3000/notifications");
+    notifications.value = res.data;
+  } catch (err) {
+    console.error("Failed to fetch notifications:", err);
+  }
+}
+
+// Mark all notifications as read
+async function markAllAsRead() {
+  try {
+    await axios.put("http://localhost:3000/notifications/mark-all-read");
+    // Update local status
+    notifications.value.forEach(n => n.status = 1);
+  } catch (err) {
+    console.error("Failed to mark notifications as read:", err);
+  }
+}
+
+onMounted(fetchNotifications);
+
+watch(
+  () => store.notification,
+  (newVal, oldVal) => {
+    fetchNotifications()
+  },
+  { immediate: true } // run once initially
+)
+
+
+function toggleNotificationModal(){
+  isNotificationModalVisible.value = !isNotificationModalVisible.value
+}
+
+
+const isVisibleViewNotification = ref(false)
+const notificationMessage = ref('')
+async function toggleViewNotificationModal(notif){
+  isVisibleViewNotification.value = !isVisibleViewNotification.value
+  if(notif){
+    notificationMessage.value = notif.message
+
+    try {
+      await axios.put(`http://localhost:3000/notifications/mark-read/${notif.notif_id}`);
+      // Optionally update locally too
+      notif.status = 1;
+    } catch (error) {
+      console.error("❌ Failed to mark notification as read", error);
+    }
+  }
+}
+
+// Close dropdown when clicked outside
+const notificationWrapper = ref(null)
+const notificationIconWrapper = ref(null)
+const settingsWrapper = ref(null)
+const settingsIconWrapper = ref(null)
+function handleClickOutside(event) {
+    // Notification
+    if (notificationWrapper.value && 
+        !notificationWrapper.value.contains(event.target) &&
+        notificationIconWrapper.value &&
+        !notificationIconWrapper.value.contains(event.target)
+        ) {
+
+        isNotificationModalVisible.value = false
+    }
+
+    // Settings
+    if (settingsWrapper.value && 
+        !settingsWrapper.value.contains(event.target) &&
+        settingsIconWrapper.value &&
+        !settingsIconWrapper.value.contains(event.target)) {
+
+        if(isSettingsModalVisible.value === true){
+          settingsRotated.value = !settingsRotated.value
+        }
+        isSettingsModalVisible.value = false
+    }
+}
+
+onMounted(() => {
+    document.addEventListener('mousedown', handleClickOutside)
+})
+
+onBeforeUnmount(() => {
+    document.removeEventListener('mousedown', handleClickOutside)
+})
+
+
 const settingsLogOutModal = ref(false)
 const isVisibleLogOutModal = ref(false)
 function toggleLogOutModal() {
@@ -286,15 +392,101 @@ watch(confirmNewPassword, (newVal) => {
       <header class="navbar">
         
         <div class="navbar-elements">
-          <svg class="svg-icon" style="width: 26px; height: 26px;vertical-align: middle;fill: currentColor;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M618.666667 874.666667a106.666667 106.666667 0 0 1-213.333334 0H85.333333c-36.650667 0-56.256-43.178667-32.106666-70.762667l107.136-122.453333C176.853333 662.613333 192 622.293333 192 597.269333V362.666667C192 185.941333 335.274667 42.666667 512 42.666667c176.725333 0 320 143.274667 320 320v234.602666c0 25.066667 15.146667 65.322667 31.637333 84.181334l107.136 122.453333C994.922667 831.488 975.317333 874.666667 938.666667 874.666667H618.666667z m180.757333-137.024C769.28 703.232 746.666667 643.008 746.666667 597.269333V362.666667c0-129.6-105.066667-234.666667-234.666667-234.666667s-234.666667 105.066667-234.666667 234.666667v234.602666c0 45.696-22.656 105.984-52.757333 140.373334L179.349333 789.333333h665.28l-45.226666-51.690666z"  /></svg>
-          <svg @click="settings" :style="{ transform: settingsRotated ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.4s' }" width="30" height="30" viewBox="0 0 36 37" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <svg @click="toggleNotificationModal()" ref="notificationIconWrapper"
+              class="svg-icon" style="width: 26px; height: 26px;vertical-align: middle;fill: currentColor;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M618.666667 874.666667a106.666667 106.666667 0 0 1-213.333334 0H85.333333c-36.650667 0-56.256-43.178667-32.106666-70.762667l107.136-122.453333C176.853333 662.613333 192 622.293333 192 597.269333V362.666667C192 185.941333 335.274667 42.666667 512 42.666667c176.725333 0 320 143.274667 320 320v234.602666c0 25.066667 15.146667 65.322667 31.637333 84.181334l107.136 122.453333C994.922667 831.488 975.317333 874.666667 938.666667 874.666667H618.666667z m180.757333-137.024C769.28 703.232 746.666667 643.008 746.666667 597.269333V362.666667c0-129.6-105.066667-234.666667-234.666667-234.666667s-234.666667 105.066667-234.666667 234.666667v234.602666c0 45.696-22.656 105.984-52.757333 140.373334L179.349333 789.333333h665.28l-45.226666-51.690666z"  /></svg>
+          
+          <svg @click="settings" ref="settingsIconWrapper" :style="{ transform: settingsRotated ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.4s' }" width="30" height="30" viewBox="0 0 36 37" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M4.02943 23.2874L6.95643 28.3511C7.15076 28.687 7.47052 28.9319 7.84541 29.0321C8.2203 29.1323 8.61962 29.0795 8.95558 28.8853L10.9986 27.7057C11.8475 28.3745 12.7856 28.9233 13.772 29.3331V31.6718C13.772 32.0599 13.9262 32.4322 14.2006 32.7066C14.4751 32.9811 14.8473 33.1353 15.2355 33.1353H21.0895C21.4776 33.1353 21.8499 32.9811 22.1243 32.7066C22.3988 32.4322 22.553 32.0599 22.553 31.6718V29.3331C23.5471 28.9192 24.4801 28.3717 25.3263 27.7057L27.3694 28.8853C28.0675 29.2877 28.966 29.0463 29.3685 28.3511L32.2955 23.2874C32.4881 22.9511 32.5401 22.5523 32.44 22.1778C32.34 21.8034 32.096 21.4836 31.7613 21.2882L29.7534 20.1277C29.9103 19.0483 29.9093 17.9519 29.7505 16.8728L31.7584 15.7123C32.455 15.3098 32.6965 14.4098 32.2926 13.7131L29.3656 8.64942C29.1713 8.31354 28.8515 8.06859 28.4766 7.96842C28.1017 7.86825 27.7024 7.92106 27.3664 8.11524L25.3234 9.29483C24.4783 8.62802 23.5456 8.08044 22.5515 7.66741V5.32874C22.5515 4.94059 22.3973 4.56834 22.1229 4.29388C21.8484 4.01942 21.4762 3.86523 21.088 3.86523H15.234C14.8459 3.86523 14.4736 4.01942 14.1992 4.29388C13.9247 4.56834 13.7705 4.94059 13.7705 5.32874V7.66741C12.7764 8.08131 11.8433 8.62882 10.9972 9.29483L8.95558 8.11524C8.78928 8.0189 8.60561 7.95629 8.41509 7.93099C8.22457 7.9057 8.03093 7.91822 7.84525 7.96783C7.65957 8.01745 7.4855 8.10318 7.33298 8.22014C7.18047 8.33709 7.05251 8.48297 6.95643 8.64942L4.02943 13.7131C3.83682 14.0495 3.78488 14.4483 3.88493 14.8227C3.98498 15.1971 4.22891 15.5169 4.56361 15.7123L6.57153 16.8728C6.41367 17.952 6.41367 19.0485 6.57153 20.1277L4.56361 21.2882C3.86698 21.6907 3.6255 22.5907 4.02943 23.2874ZM18.161 12.6462C21.3895 12.6462 24.015 15.2718 24.015 18.5003C24.015 21.7287 21.3895 24.3543 18.161 24.3543C14.9325 24.3543 12.307 21.7287 12.307 18.5003C12.307 15.2718 14.9325 12.6462 18.161 12.6462Z" fill="black"/>
           </svg>
         </div>
 
+        <!-- Notification Modal -->
+        <transition name="slide-down">
+          <div v-show="isNotificationModalVisible" class="notification-modal" ref="notificationWrapper">
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0 18px; margin-bottom: 10px; margin-top: 10px;">
+              <label style="font-weight: 600; font-size: 1.15rem;">Notification</label>
+              <p @click="markAllAsRead" style="font-size: 0.92rem; color: var(--color-primary); font-weight: 600; cursor: pointer;">
+                Mark all as read
+              </p>
+            </div>
+
+            <div style="display: flex; flex-direction: column; height: 100%; border-top: 1px solid var(--color-border); overflow-y: auto;">
+              <div v-if="notifications.length">
+                <div
+                  v-for="notif in notifications"
+                  :key="notif.notif_id"
+                  @click="toggleViewNotificationModal(notif)"
+                  :style="{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: '16px',
+                    padding: '16px 18px',
+                    cursor: 'pointer',
+                    borderBottom: '1px solid var(--color-border)',
+                    borderLeft: notif.status === 0 ? '3px solid var(--color-primary)' : 'none',
+                    backgroundColor: notif.status === 1 ? 'var(--color-lightgray)' : 'var(--color-secondary)'
+                  }"
+                  
+                >
+                  <img
+                    style="width: 2.2em; height: 2.2em;"
+                    :src="notificationImages[notif.image]"
+                  />
+                  <div style="display: flex; flex-direction: column; gap: 2px;">
+                    <p
+                      style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; font-size: 0.92rem;"
+                      v-html="notif.message"
+                    ></p>
+                    <p style="font-size: 0.85rem;" class="paragraph--gray">
+                      {{ new Date(notif.created_at).toLocaleString('en-US', {
+                        month: 'numeric',
+                        day: 'numeric',
+                        year: '2-digit',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                      }) }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div v-else style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; height: 100%;">
+                <svg class="svg-icon" style="width: 2.5em; height: 2.5em;vertical-align: middle; will-change: transform; transform: rotate(-25deg) translateZ(0); fill: currentColor;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M991.986109 153.004651c34.752496-34.958884 34.752496-91.834543 0-126.785488-34.744558-34.958884-91.286822-34.958884-126.039318 0a89.183256 89.183256 0 0 0-21.78183 35.903504 290.982698 290.982698 0 0 0-328.148341 29.053023L220.834729 340.87293c-2.841798-2.159132-14.828155-6.715535-17.415938-8.064992-57.701209-30.045271-127.349085-19.162295-173.325892 27.076465-34.831876 35.038264-34.839814 91.747225 0 126.785488l149.154729 150.027907c-37.92769 57.447194-32.371101 136.485705 18.908279 188.066729 51.23969 51.533395 129.817798 57.193178 186.979225 19.019411l149.154728 150.027907c34.744558 34.950946 91.286822 34.950946 126.039318 0a149.527814 149.527814 0 0 0 26.917706-174.341954c-1.341519-2.603659-5.874109-14.661457-8.017365-17.519131l248.268403-297.07907C1005.401302 409.099907 1013.68062 277.829457 956.29693 174.90555a88.437085 88.437085 0 0 0 35.689179-21.908837z m-751.806512 629.482171c-27.782946-27.941705-33.077581-69.179535-17.439752-102.050729l118.895132 119.593674a88.746667 88.746667 0 0 1-101.463318-17.542945z m378.133829 169.055256a29.61662 29.61662 0 0 1-42.015752 0L72.108651 444.408062a29.989705 29.989705 0 0 1 0-42.261829 88.659349 88.659349 0 0 1 62.979969-26.354109c13.923225 0 27.981395 3.302202 41.007628 10.089178 3.492713 1.817798 22.194605 16.399876 22.194605 16.399876l0.03969 0.03969 419.808248 422.261085 0.03969 0.03969s14.502698 18.813023 16.30462 22.321613a89.715101 89.715101 0 0 1-16.169675 104.598822zM881.592558 466.912248L637.221705 759.252341 263.279132 383.118884 553.753798 137.343008c93.001426-76.545984 227.216868-69.806636 312.192993 15.661643a234.519814 234.519814 0 0 1 15.653705 313.907597z m26.354109-356.177364a29.989705 29.989705 0 0 1 0-42.253892 29.568992 29.568992 0 0 1 42.015752 0 29.989705 29.989705 0 0 1 0 42.26183 29.568992 29.568992 0 0 1-42.015752 0z m-84.031504 84.523659a174.691225 174.691225 0 0 1 11.589457 233.908589l-48.866232 60.082604a29.592806 29.592806 0 0 1-41.809365 4.207132 30.005581 30.005581 0 0 1-4.183318-42.055442l48.874171-60.090542a114.862636 114.862636 0 0 0-7.620465-153.790512 30.005581 30.005581 0 0 1 0-42.261829 29.592806 29.592806 0 0 1 42.015752 0z" fill="#7F8D9C" /></svg>
+                <p style="text-align: center; color: #7F8D9C; font-style: italic;">
+                  No notifications yet.
+                </p>
+              </div>
+            </div>
+            
+            <div style="display: flex; align-items: center; justify-content: center; margin-top: auto; border-top: 1px solid var(--color-border); padding: 6px 0;">
+              <small style="color: #7F8D9C; font-weight: bold; font-size: 0.8rem;">Notification will be deleted after 30 days</small>
+            </div>
+
+          </div>
+        </transition>
+
+         <!-- View Notification Modal -->
+        <transition name="fade">
+            <div v-show="isVisibleViewNotification" class="modal" @click.self="toggleViewNotificationModal()">
+               <div class="modal-content-view-notification">
+                    <h2 style="align-self: flex-start; line-height: 0; margin: 12px 0px;">Notification</h2>
+
+                    <div style="display: flex; flex-direction: column; width: 100%; gap: 14px;">
+                        <p v-html="notificationMessage"></p>
+                    </div>
+
+                    <div style="display: flex; flex-direction: row; gap: 6px; margin-left: auto;">
+                        <button @click="toggleViewNotificationModal()" >Ok</button>
+                    </div>
+               </div>
+            </div>
+        </transition>
+
         <!-- Settings Modal -->
         <transition name="slide-down">
-          <div v-show="isSettingsModalVisible" class="settings-modal">
+          <div v-show="isSettingsModalVisible" class="settings-modal" ref="settingsWrapper">
             <div @click="changePasswordBtn()" class="settings-btn-modal">
               <label>Change Password</label>
             </div>
@@ -474,6 +666,23 @@ watch(confirmNewPassword, (newVal) => {
   transition: all 0.2s;
 }
 
+.notification-modal {
+  position: absolute; 
+  top: 60px; 
+  right: 60px; 
+  display: flex; 
+  flex-direction: column; 
+  width: 400px;
+  height: 450px;
+  background-color: white; 
+  border: 1px solid var(--color-border); 
+  border-radius: 8px;
+  overflow: hidden;
+  z-index: 1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+
 .settings-modal {
   position: absolute; 
   top: 60px; 
@@ -486,6 +695,7 @@ watch(confirmNewPassword, (newVal) => {
   border: 1px solid var(--color-border); 
   border-radius: 8px;
   overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .settings-btn-modal {
@@ -580,6 +790,22 @@ watch(confirmNewPassword, (newVal) => {
   padding-left: 55px;
   padding-right: 55px;
   overflow-y: auto;
+}
+
+.modal-content-view-notification {
+    display: flex;
+    flex-direction: column;
+    background-color: white;
+    height: auto;
+    align-items: center;
+    width: 420px;
+    padding-top: 35px;
+    padding-bottom: 35px;
+    padding-left: 45px;
+    padding-right: 45px;
+    box-shadow: -2px 0 8px rgba(0,0,0,0.2);
+    border-radius: 6px;
+    gap: 20px;
 }
 
 /* =============================

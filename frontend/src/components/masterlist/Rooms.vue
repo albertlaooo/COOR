@@ -340,7 +340,7 @@
     }
     /////////////////////////////// Navigation Functions ////////////////////////////
     function backBtn() {
-        router.push(`/main/masterlist`)
+        router.back();
     }
 
     function navBtn(which) {

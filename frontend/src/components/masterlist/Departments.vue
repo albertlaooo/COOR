@@ -215,7 +215,7 @@
 
     /////////////////////////////// NAVIGATION FUNCTION ////////////////////////////
     function backBtn() {
-        router.push(`/main/masterlist`)
+        router.back();
     }
 
     function navBtn(which) {

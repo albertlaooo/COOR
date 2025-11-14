@@ -314,7 +314,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', handleClickOutsi
 //#endregion
 
 //#region 🧭 NAVIGATION
-function backBtn() { router.push(`/main/masterlist`) }
+function backBtn() { router.back() }
 function navBtn(which) { router.push(`/main/masterlist/${which}`) }
 
 function courseClick(course) {
