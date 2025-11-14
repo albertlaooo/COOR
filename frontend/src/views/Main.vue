@@ -1,34 +1,32 @@
 <script setup>
+//#region IMPORTS
 import { CanceledError } from 'axios'
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { store } from '@/components/store.js'
 import { useRouter } from 'vue-router'
 import axios from "axios"
 
-const router = useRouter()
-
 import newEventAdded from '@/assets/notification/0.svg'
 import event3DaysReminder from '@/assets/notification/1.svg'
 import event1DayReminder from '@/assets/notification/2.svg'
+//#endregion
 
+//#region ROUTER
+const router = useRouter()
+//#endregion
+
+//#region NOTIFICATION IMAGES
 const notificationImages = {
   0: newEventAdded,
   1: event3DaysReminder,
   2: event1DayReminder
 }
+//#endregion
 
-// Sidebar
+//#region SIDEBAR STATES & FUNCTIONS
 const sidebarBtnRotated = ref(false)
 const settingsRotated = ref(false)
 const sidebarCollapsed = ref(false)
-
-const showErrorInput = ref(true)
-
-const isCurrentPasswordOk = ref(true)
-const isNewPasswordOk = ref(true)
-const isConfirmNewPasswordOk = ref(true)
-
-const changePasswordMessage = ref('')
 
 const sidebarBtn = () => {
   sidebarBtnRotated.value = !sidebarBtnRotated.value
@@ -39,130 +37,230 @@ const settings = () => {
   settingsRotated.value = !settingsRotated.value
   isSettingsModalVisible.value = !isSettingsModalVisible.value
 }
+//#endregion
 
+//#region NAVIGATION TABS
 const tabs = [
   { name: 'Home', path: '/main/home' },
   { name: 'Masterlist', path: '/main/masterlist' },
   { name: 'Class Scheduling', path: '/main/class-scheduling' },
 ]
+//#endregion
+
+//#region NOTIFICATIONS - STATES
 const isNotificationModalVisible = ref(false)
-const notifications = ref([]);
+const isVisibleNotificationMoreModal = ref(false)
 
-// Fetch notifications from server
-async function fetchNotifications() {
-  try {
-    const res = await axios.get("http://localhost:3000/notifications");
-    notifications.value = res.data;
-  } catch (err) {
-    console.error("Failed to fetch notifications:", err);
-  }
-}
-
-// Mark all notifications as read
-async function markAllAsRead() {
-  try {
-    await axios.put("http://localhost:3000/notifications/mark-all-read");
-    // Update local status
-    notifications.value.forEach(n => n.status = 1);
-  } catch (err) {
-    console.error("Failed to mark notifications as read:", err);
-  }
-}
-
-onMounted(fetchNotifications);
-
-watch(
-  () => store.notification,
-  (newVal, oldVal) => {
-    fetchNotifications()
-  },
-  { immediate: true } // run once initially
-)
-
-
-function toggleNotificationModal(){
-  isNotificationModalVisible.value = !isNotificationModalVisible.value
-}
-
+const notifications = ref([])
+const unreadCount = ref(0)
 
 const isVisibleViewNotification = ref(false)
 const notificationMessage = ref('')
-async function toggleViewNotificationModal(notif){
-  isVisibleViewNotification.value = !isVisibleViewNotification.value
-  if(notif){
-    notificationMessage.value = notif.message
 
-    try {
-      await axios.put(`http://localhost:3000/notifications/mark-read/${notif.notif_id}`);
-      // Optionally update locally too
-      notif.status = 1;
-    } catch (error) {
-      console.error("❌ Failed to mark notification as read", error);
-    }
+const moreModalPosition = ref({ top: 0, left: 0 });
+//#endregion
+
+//#region NOTIFICATIONS - FUNCTIONS
+const selectedNotif = ref('');
+const markAsReadOrUnread = ref('');
+
+async function fetchNotifications() {
+  try {
+    const res = await axios.get("http://localhost:3000/notifications")
+    notifications.value = res.data
+    unreadCount.value = notifications.value.filter(n => n.status === 0).length
+  } catch (err) {
+    console.error("Failed to fetch notifications:", err)
   }
 }
 
-// Close dropdown when clicked outside
-const notificationWrapper = ref(null)
-const notificationIconWrapper = ref(null)
-const settingsWrapper = ref(null)
-const settingsIconWrapper = ref(null)
-function handleClickOutside(event) {
-    // Notification
-    if (notificationWrapper.value && 
-        !notificationWrapper.value.contains(event.target) &&
-        notificationIconWrapper.value &&
-        !notificationIconWrapper.value.contains(event.target)
-        ) {
-
-        isNotificationModalVisible.value = false
-    }
-
-    // Settings
-    if (settingsWrapper.value && 
-        !settingsWrapper.value.contains(event.target) &&
-        settingsIconWrapper.value &&
-        !settingsIconWrapper.value.contains(event.target)) {
-
-        if(isSettingsModalVisible.value === true){
-          settingsRotated.value = !settingsRotated.value
-        }
-        isSettingsModalVisible.value = false
-    }
+async function markAllAsRead() {
+  try {
+    await axios.put("http://localhost:3000/notifications/mark-all-read")
+    notifications.value.forEach(n => n.status = 1)
+  } catch (err) {
+    console.error("Failed to mark notifications as read:", err)
+  }
 }
 
+function toggleNotificationModal() {
+  isNotificationModalVisible.value = !isNotificationModalVisible.value
+}
+
+function toggleNotificationMoreModal(event, notif) {
+  event.stopPropagation(); // prevent bubbling
+
+  // If modal is already visible for the same notification, close it
+  if (selectedNotif.value) {
+    isVisibleNotificationMoreModal.value = false;
+    selectedNotif.value = null;
+    return;
+  }
+
+  // ⭐ Get the position of the 3-dots icon
+  const rect = event.target.getBoundingClientRect();
+
+  moreModalPosition.value = {
+    top: rect.top + window.scrollY + 5,        // place slightly below
+    left: rect.left + window.scrollX - 440     // show on LEFT side
+  };
+
+  if (notif) {
+    if (notif.status === 0) {
+      markAsReadOrUnread.value = 'Mark as read'
+    } else {
+      markAsReadOrUnread.value = 'Mark as unread'
+    }
+    selectedNotif.value = notif
+  }
+
+  isVisibleNotificationMoreModal.value = !isVisibleNotificationMoreModal.value
+}
+
+
+async function markAs() {
+  const notifId = selectedNotif.value.notif_id;
+
+  const newStatus =
+    markAsReadOrUnread.value === 'Mark as read' ? 1 : 0;
+
+  try {
+    await axios.put(
+      `http://localhost:3000/notifications/update-status/${notifId}`,
+      { status: newStatus }
+    );
+
+    isVisibleNotificationMoreModal.value = !isVisibleNotificationMoreModal.value
+    selectedNotif.value = null;
+    fetchNotifications();
+  } catch (error) {
+    console.error("❌ Failed to update notification status", error);
+  }
+}
+
+async function removeNotification() {
+  try {
+    await axios.delete(`http://localhost:3000/delete-notification/${selectedNotif.value.notif_id}`)
+    isVisibleNotificationMoreModal.value = !isVisibleNotificationMoreModal.value
+    fetchNotifications()
+  } catch (error) {
+    console.error("❌ Failed to delete notification", error)
+  }
+}
+
+async function toggleViewNotificationModal(notif) {
+  isVisibleViewNotification.value = !isVisibleViewNotification.value
+
+  if (notif) {
+    notificationMessage.value = notif.message
+
+    // Mark as read automatically when viewed
+    try {
+      await axios.put(
+        `http://localhost:3000/notifications/update-status/${notif.notif_id}`,
+        { status: 1 } // mark as read
+      )
+
+      notif.status = 1 // update UI immediately
+    } catch (error) {
+      console.error("❌ Failed to mark notification as read", error)
+    }
+
+    fetchNotifications() // refresh list
+  }
+}
+
+//#endregion
+
+//#region CLICK OUTSIDE HANDLER
+const notificationWrapper = ref(null)
+const notificationIconWrapper = ref(null)
+const viewNotificationWrapper = ref(null)
+const notificationMoreWrapper = ref(null)
+const settingsWrapper = ref(null)
+const settingsIconWrapper = ref(null)
+
+function handleClickOutside(event) {
+  // Notification
+  if (
+    notificationWrapper.value &&
+    !notificationWrapper.value.contains(event.target) &&
+    notificationIconWrapper.value &&
+    !notificationIconWrapper.value.contains(event.target) &&
+    viewNotificationWrapper.value &&
+    !viewNotificationWrapper.value.contains(event.target) &&
+    notificationMoreWrapper.value &&
+    !notificationMoreWrapper.value.contains(event.target)
+  ) {
+    isNotificationModalVisible.value = false
+  }
+
+  // Notification more
+  if (
+    notificationMoreWrapper.value &&
+    !notificationMoreWrapper.value.contains(event.target)
+  ) {
+    isVisibleNotificationMoreModal.value = false
+  }
+
+  // Settings
+  if (
+    settingsWrapper.value &&
+    !settingsWrapper.value.contains(event.target) &&
+    settingsIconWrapper.value &&
+    !settingsIconWrapper.value.contains(event.target)
+  ) {
+    if (isSettingsModalVisible.value === true) {
+      settingsRotated.value = !settingsRotated.value
+    }
+    isSettingsModalVisible.value = false
+  }
+}
+//#endregion
+
+//#region MOUNT / UNMOUNT
 onMounted(() => {
-    document.addEventListener('mousedown', handleClickOutside)
+  fetchNotifications()
+  document.addEventListener("mousedown", handleClickOutside)
 })
+
+watch(
+  () => store.notification,
+  () => fetchNotifications(),
+  { immediate: true }
+)
 
 onBeforeUnmount(() => {
-    document.removeEventListener('mousedown', handleClickOutside)
+  document.removeEventListener("mousedown", handleClickOutside)
 })
+//#endregion
 
-
+//#region LOGOUT
 const settingsLogOutModal = ref(false)
 const isVisibleLogOutModal = ref(false)
+
 function toggleLogOutModal() {
   isVisibleLogOutModal.value = !isVisibleLogOutModal.value
   isSettingsModalVisible.value = false
 
-  if(isVisibleLogOutModal.value === false && settingsLogOutModal.value === true){
+  if (!isVisibleLogOutModal.value && settingsLogOutModal.value === true) {
     settingsRotated.value = !settingsRotated.value
     settingsLogOutModal.value = false
   }
 }
 
 function logout() {
-  // Save login
   localStorage.removeItem('token')
   localStorage.removeItem('user')
   isSettingsModalVisible.value = false
   router.push('/')
 }
+//#endregion
 
-// Navbar
+//#region SETTINGS / CHANGE PASSWORD — STATES
 const isSettingsModalVisible = ref(false)
 const isChangePasswordModalVisible = ref(false)
+
 const showCurrentPassword = ref(false)
 const showNewPassword = ref(false)
 const showConfirmNewPassword = ref(false)
@@ -171,116 +269,98 @@ const currentPassword = ref('')
 const newPassword = ref('')
 const confirmNewPassword = ref('')
 
+const showErrorInput = ref(true)
+const isCurrentPasswordOk = ref(true)
+const isNewPasswordOk = ref(true)
+const isConfirmNewPasswordOk = ref(true)
+const changePasswordMessage = ref('')
+//#endregion
+
+//#region CHANGE PASSWORD — FUNCTIONS
 function changePasswordBtn() {
   toggleChangePasswordModal()
   isSettingsModalVisible.value = false
 }
 
 async function changePasswordConfirm() {
-  // Reset validation flags
-  showErrorInput.value = false;
-  isCurrentPasswordOk.value = true;
-  isNewPasswordOk.value = true;
-  isConfirmNewPasswordOk.value = true;
-  changePasswordMessage.value = '';
+  showErrorInput.value = false
+  isCurrentPasswordOk.value = true
+  isNewPasswordOk.value = true
+  isConfirmNewPasswordOk.value = true
+  changePasswordMessage.value = ''
 
-  // Validate empty fields
-  let hasError = false;
-  if (!currentPassword.value) {
-    isCurrentPasswordOk.value = false;
-    hasError = true;
-  }
-  if (!newPassword.value) {
-    isNewPasswordOk.value = false;
-    hasError = true;
-  }
-  if (!confirmNewPassword.value) {
-    isConfirmNewPasswordOk.value = false;
-    hasError = true;
-  }
+  let hasError = false
+
+  if (!currentPassword.value) { isCurrentPasswordOk.value = false; hasError = true }
+  if (!newPassword.value) { isNewPasswordOk.value = false; hasError = true }
+  if (!confirmNewPassword.value) { isConfirmNewPasswordOk.value = false; hasError = true }
+
   if (hasError) {
-    showErrorInput.value = true;
+    showErrorInput.value = true
     changePasswordMessage.value = 'Please fill out all fields.'
-
-    // animate red border
     showErrorInput.value = false
-    setTimeout(() => { showErrorInput.value = true; }, 0);
-    return; // Stop here if any field is empty
+    setTimeout(() => showErrorInput.value = true, 0)
+    return
   }
 
-  // Check if new password matches confirm password
   if (newPassword.value !== confirmNewPassword.value) {
-    isNewPasswordOk.value = false;
-    isConfirmNewPasswordOk.value = false;
-    showErrorInput.value = true;
+    isNewPasswordOk.value = false
+    isConfirmNewPasswordOk.value = false
+    showErrorInput.value = true
     changePasswordMessage.value = 'New password and confirmation do not match.'
-
-    // animate red border
     showErrorInput.value = false
-    setTimeout(() => { showErrorInput.value = true; }, 0);
-    return; // Stop here if mismatch
+    setTimeout(() => showErrorInput.value = true, 0)
+    return
   }
 
-  // Call API to change password
   try {
-    const response = await axios.post("http://localhost:3000/change-password", {
+    const res = await axios.post("http://localhost:3000/change-password", {
       oldPassword: currentPassword.value,
       newPassword: newPassword.value
-    });
+    })
 
-    if (response.data.success) {
-      // Reset fields on success
-      currentPassword.value = '';
-      newPassword.value = '';
-      confirmNewPassword.value = '';
-      showErrorInput.value = false;
-      toggleChangePasswordModal();
-    } else {
-      // Old password incorrect
-      isCurrentPasswordOk.value = false;
-      showErrorInput.value = true;
-
-      // animate red border
+    if (res.data.success) {
+      currentPassword.value = ''
+      newPassword.value = ''
+      confirmNewPassword.value = ''
       showErrorInput.value = false
-      setTimeout(() => { showErrorInput.value = true; }, 0);
+      toggleChangePasswordModal()
+    } else {
+      isCurrentPasswordOk.value = false
+      showErrorInput.value = true
+      showErrorInput.value = false
+      setTimeout(() => showErrorInput.value = true, 0)
       changePasswordMessage.value = 'Current password is incorrect.'
     }
-  } catch (error) {
-    console.error("Error changing password:", error);
+  } catch (err) {
+    console.error("Error changing password:", err)
     changePasswordMessage.value = '⚠️ Server error. Please try again later.'
   }
 }
 
-
-function toggleChangePasswordModal(){
+function toggleChangePasswordModal() {
   isChangePasswordModalVisible.value = !isChangePasswordModalVisible.value
 
-  if(isChangePasswordModalVisible.value === false){
+  if (!isChangePasswordModalVisible.value) {
     settingsRotated.value = !settingsRotated.value
   }
 
   setTimeout(() => {
-    currentPassword.value = '';
-    newPassword.value = '';
-    confirmNewPassword.value = '';
-  }, 100);
+    currentPassword.value = ''
+    newPassword.value = ''
+    confirmNewPassword.value = ''
+  }, 100)
 }
+//#endregion
 
-// Watch currentPassword input
-watch(currentPassword, (newVal) => {
-  isCurrentPasswordOk.value = newVal.length > 0
-})
+//#region INPUT WATCHERS
+watch(currentPassword, val => (isCurrentPasswordOk.value = val.length > 0))
+watch(newPassword, val => (isNewPasswordOk.value = val.length > 0))
+watch(confirmNewPassword, val => (isConfirmNewPasswordOk.value = val.length > 0))
+//#endregion
 
-// Watch newPassword input
-watch(newPassword, (newVal) => {
-  isNewPasswordOk.value = newVal.length > 0
-})
-
-// Watch confirmNewPassword input
-watch(confirmNewPassword, (newVal) => {
-  isConfirmNewPasswordOk.value = newVal.length > 0
-})
 </script>
+
 
 <template>
   <div class="main-layout">
@@ -392,8 +472,28 @@ watch(confirmNewPassword, (newVal) => {
       <header class="navbar">
         
         <div class="navbar-elements">
-          <svg @click="toggleNotificationModal()" ref="notificationIconWrapper"
-              class="svg-icon" style="width: 26px; height: 26px;vertical-align: middle;fill: currentColor;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M618.666667 874.666667a106.666667 106.666667 0 0 1-213.333334 0H85.333333c-36.650667 0-56.256-43.178667-32.106666-70.762667l107.136-122.453333C176.853333 662.613333 192 622.293333 192 597.269333V362.666667C192 185.941333 335.274667 42.666667 512 42.666667c176.725333 0 320 143.274667 320 320v234.602666c0 25.066667 15.146667 65.322667 31.637333 84.181334l107.136 122.453333C994.922667 831.488 975.317333 874.666667 938.666667 874.666667H618.666667z m180.757333-137.024C769.28 703.232 746.666667 643.008 746.666667 597.269333V362.666667c0-129.6-105.066667-234.666667-234.666667-234.666667s-234.666667 105.066667-234.666667 234.666667v234.602666c0 45.696-22.656 105.984-52.757333 140.373334L179.349333 789.333333h665.28l-45.226666-51.690666z"  /></svg>
+          <div style="position: relative; display: inline-block; user-select: none; cursor: pointer;">
+            <svg @click="toggleNotificationModal()" ref="notificationIconWrapper"
+              class="svg-icon" style="width: 26px; height: 26px;vertical-align: middle;fill: currentColor;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M618.666667 874.666667a106.666667 106.666667 0 0 1-213.333334 0H85.333333c-36.650667 0-56.256-43.178667-32.106666-70.762667l107.136-122.453333C176.853333 662.613333 192 622.293333 192 597.269333V362.666667C192 185.941333 335.274667 42.666667 512 42.666667c176.725333 0 320 143.274667 320 320v234.602666c0 25.066667 15.146667 65.322667 31.637333 84.181334l107.136 122.453333C994.922667 831.488 975.317333 874.666667 938.666667 874.666667H618.666667z m180.757333-137.024C769.28 703.232 746.666667 643.008 746.666667 597.269333V362.666667c0-129.6-105.066667-234.666667-234.666667-234.666667s-234.666667 105.066667-234.666667 234.666667v234.602666c0 45.696-22.656 105.984-52.757333 140.373334L179.349333 789.333333h665.28l-45.226666-51.690666z"/>
+            </svg>
+
+            <!-- Badge for number of notifications -->
+            <span v-if="unreadCount > 0"
+                  style="
+                    position: absolute;
+                    top: -5px;
+                    right: -5px;
+                    background-color: #b84343;
+                    color: white;
+                    border-radius: 50%;
+                    padding: 2px 6px;
+                    font-size: 12px;
+                    font-weight: bold;
+                  ">
+              {{ unreadCount }}
+            </span>
+                      
+          </div>
           
           <svg @click="settings" ref="settingsIconWrapper" :style="{ transform: settingsRotated ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.4s' }" width="30" height="30" viewBox="0 0 36 37" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path d="M4.02943 23.2874L6.95643 28.3511C7.15076 28.687 7.47052 28.9319 7.84541 29.0321C8.2203 29.1323 8.61962 29.0795 8.95558 28.8853L10.9986 27.7057C11.8475 28.3745 12.7856 28.9233 13.772 29.3331V31.6718C13.772 32.0599 13.9262 32.4322 14.2006 32.7066C14.4751 32.9811 14.8473 33.1353 15.2355 33.1353H21.0895C21.4776 33.1353 21.8499 32.9811 22.1243 32.7066C22.3988 32.4322 22.553 32.0599 22.553 31.6718V29.3331C23.5471 28.9192 24.4801 28.3717 25.3263 27.7057L27.3694 28.8853C28.0675 29.2877 28.966 29.0463 29.3685 28.3511L32.2955 23.2874C32.4881 22.9511 32.5401 22.5523 32.44 22.1778C32.34 21.8034 32.096 21.4836 31.7613 21.2882L29.7534 20.1277C29.9103 19.0483 29.9093 17.9519 29.7505 16.8728L31.7584 15.7123C32.455 15.3098 32.6965 14.4098 32.2926 13.7131L29.3656 8.64942C29.1713 8.31354 28.8515 8.06859 28.4766 7.96842C28.1017 7.86825 27.7024 7.92106 27.3664 8.11524L25.3234 9.29483C24.4783 8.62802 23.5456 8.08044 22.5515 7.66741V5.32874C22.5515 4.94059 22.3973 4.56834 22.1229 4.29388C21.8484 4.01942 21.4762 3.86523 21.088 3.86523H15.234C14.8459 3.86523 14.4736 4.01942 14.1992 4.29388C13.9247 4.56834 13.7705 4.94059 13.7705 5.32874V7.66741C12.7764 8.08131 11.8433 8.62882 10.9972 9.29483L8.95558 8.11524C8.78928 8.0189 8.60561 7.95629 8.41509 7.93099C8.22457 7.9057 8.03093 7.91822 7.84525 7.96783C7.65957 8.01745 7.4855 8.10318 7.33298 8.22014C7.18047 8.33709 7.05251 8.48297 6.95643 8.64942L4.02943 13.7131C3.83682 14.0495 3.78488 14.4483 3.88493 14.8227C3.98498 15.1971 4.22891 15.5169 4.56361 15.7123L6.57153 16.8728C6.41367 17.952 6.41367 19.0485 6.57153 20.1277L4.56361 21.2882C3.86698 21.6907 3.6255 22.5907 4.02943 23.2874ZM18.161 12.6462C21.3895 12.6462 24.015 15.2718 24.015 18.5003C24.015 21.7287 21.3895 24.3543 18.161 24.3543C14.9325 24.3543 12.307 21.7287 12.307 18.5003C12.307 15.2718 14.9325 12.6462 18.161 12.6462Z" fill="black"/>
@@ -416,19 +516,8 @@ watch(confirmNewPassword, (newVal) => {
                   v-for="notif in notifications"
                   :key="notif.notif_id"
                   @click="toggleViewNotificationModal(notif)"
-                  :style="{
-                    display: 'flex',
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: '16px',
-                    padding: '16px 18px',
-                    cursor: 'pointer',
-                    borderBottom: '1px solid var(--color-border)',
-                    borderLeft: notif.status === 0 ? '3px solid var(--color-primary)' : 'none',
-                    backgroundColor: notif.status === 1 ? 'var(--color-lightgray)' : 'var(--color-secondary)'
-                  }"
-                  
-                >
+                  class="notification-card"
+                  :class="{ unread: notif.status === 0 }">
                   <img
                     style="width: 2.2em; height: 2.2em;"
                     :src="notificationImages[notif.image]"
@@ -448,6 +537,10 @@ watch(confirmNewPassword, (newVal) => {
                         hour12: true
                       }) }}
                     </p>
+                  </div>
+                  <div style="display: flex; flex-direction: row; margin-left: auto; align-items: center; gap: 4px;">
+                    <svg v-show="notif.status === 0" class="svg-icon" style="width: 12px; height: 12px;vertical-align: middle;fill: var(--color-primary);overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M950.930286 512q0 119.442286-58.88 220.306286t-159.744 159.744-220.306286 58.88-220.306286-58.88-159.744-159.744-58.88-220.306286 58.88-220.306286 159.744-159.744 220.306286-58.88 220.306286 58.88 159.744 159.744 58.88 220.306286z"  /></svg>
+                    <svg class="svg-icon" @click.stop="toggleNotificationMoreModal($event, notif)"  style="width: 20px; height: 20px;vertical-align: middle;fill: currentColor;overflow: hidden;" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"><path d="M512 305.7c-57.3 0-103.8-46.5-103.8-103.8S454.7 98.2 512 98.2 615.8 144.7 615.8 202 569.3 305.7 512 305.7z m0 311.3c-57.3 0-103.8-46.5-103.8-103.8S454.7 409.5 512 409.5 615.8 456 615.8 513.3 569.3 617 512 617z m0 311.3c-57.3 0-103.8-46.5-103.8-103.8S454.7 720.8 512 720.8s103.8 46.5 103.8 103.8S569.3 928.3 512 928.3z"  /></svg>
                   </div>
                 </div>
               </div>
@@ -469,7 +562,7 @@ watch(confirmNewPassword, (newVal) => {
 
          <!-- View Notification Modal -->
         <transition name="fade">
-            <div v-show="isVisibleViewNotification" class="modal" @click.self="toggleViewNotificationModal()">
+            <div v-show="isVisibleViewNotification" class="modal" @click.self="toggleViewNotificationModal()" ref="viewNotificationWrapper">
                <div class="modal-content-view-notification">
                     <h2 style="align-self: flex-start; line-height: 0; margin: 12px 0px;">Notification</h2>
 
@@ -482,6 +575,19 @@ watch(confirmNewPassword, (newVal) => {
                     </div>
                </div>
             </div>
+        </transition>
+
+        <!-- Notification More Modal -->
+        <transition name="fade">
+          <div v-show="isVisibleNotificationMoreModal" class="modal-content-notification-more" :style="{ top: moreModalPosition.top + 'px', left: moreModalPosition.left + 'px' }" ref="notificationMoreWrapper">
+            <div @click="markAs()" class="notification-more-btn-modal">
+              <label>{{ markAsReadOrUnread }}</label>
+            </div>
+            <div class="divider" style="margin: 0 12px; margin-top: 4px; margin-bottom: 4px;"></div>
+            <div @click="removeNotification()" class="notification-more-btn-modal">
+              <label>Remove</label>
+            </div>
+          </div>
         </transition>
 
         <!-- Settings Modal -->
@@ -806,6 +912,52 @@ watch(confirmNewPassword, (newVal) => {
     box-shadow: -2px 0 8px rgba(0,0,0,0.2);
     border-radius: 6px;
     gap: 20px;
+}
+
+.modal-content-notification-more {
+  position: absolute;
+  width: 200px;
+  padding: 4px 0;
+  background-color: white;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1;
+}
+
+
+.notification-more-btn-modal {
+  flex: 1; 
+  width: 100%; 
+  padding: 8px 25px;
+}
+
+.notification-more-btn-modal:hover {
+  background-color: var(--color-lightgray-hover);
+  transition: background-color 0.1s ease-in-out;
+}
+
+.notification-card {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--color-border);
+  background-color: transparent;
+  transition: background-color 0.1s ease-in-out;
+}
+
+.notification-card.unread {
+  border-left: 3px solid var(--color-primary);
+  background-color: var(--color-lightgray-hover);
+}
+
+.notification-card:hover {
+  background-color: var(--color-lightgray);
+  transition: background-color 0.1s ease-in-out;
 }
 
 /* =============================

@@ -494,7 +494,7 @@ app.get("/notifications", (req, res) => {
       console.error("❌ Error deleting old notifications:", delErr.message);
     }
 
-    const sql = `SELECT * FROM Notifications ORDER BY status ASC, created_at DESC`;
+    const sql = `SELECT * FROM Notifications ORDER BY status ASC, notif_id DESC`;
     db.all(sql, [], (err, rows) => {
       if (err) {
         console.error("❌ Error fetching notifications:", err.message);
@@ -517,23 +517,48 @@ app.put("/notifications/mark-all-read", (req, res) => {
   });
 });
 
-// MARK SINGLE NOTIFICATION AS READ
-app.put("/notifications/mark-read/:id", (req, res) => {
+// MARK SINGLE NOTIFICATION READ OR UNREAD
+app.put("/notifications/update-status/:id", (req, res) => {
   const notifId = req.params.id;
-  const sql = `UPDATE Notifications SET status = 1 WHERE notif_id = ?`;
-  
-  db.run(sql, [notifId], function(err) {
+  const { status } = req.body; // should be 0 or 1
+
+  if (status !== 0 && status !== 1) {
+    return res.status(400).json({
+      success: false,
+      message: "Status must be 0 or 1"
+    });
+  }
+
+  const sql = `UPDATE Notifications SET status = ? WHERE notif_id = ?`;
+
+  db.run(sql, [status, notifId], function(err) {
     if (err) {
-      console.error("❌ Error marking notification as read:", err.message);
+      console.error("❌ Error updating notification status:", err.message);
       return res.status(500).json({ success: false, message: "Database error" });
     }
-    // Check if any row was actually updated
-    if (this.changes === 0) {
+
+    if (this.chchanges === 0) {
       return res.status(404).json({ success: false, message: "Notification not found" });
     }
-    res.json({ success: true, message: "Notification marked as read" });
+
+    res.json({
+      success: true,
+      message: status === 1 ? "Marked as read" : "Marked as unread"
+    });
   });
 });
+
+// DELETE NOTIFICATION
+app.delete("/delete-notification/:id", (req, res) => {
+  const id = req.params.id;
+  db.run("DELETE FROM Notifications WHERE notif_id = ?", [id], function (err) {
+    if (err) {
+      return res.status(500).json({ error: err.message });
+    }
+    res.json({ message: "Notification deleted successfully" });
+  });
+});
+
 
 /*////////////////////////////////////////////////////////////////////////
 /////////////////////////  Calendar Event  //////////////////////////////
